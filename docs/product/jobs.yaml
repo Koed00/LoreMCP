@@ -1,0 +1,43 @@
+schema_version: 1
+
+jobs:
+  - id: cross-repo-context-grounding
+    statement: |
+      When I'm working in one repo (Repo A) and need to understand a decision,
+      convention, or boundary established in a sibling repo (Repo B, C, D...)
+      within the same multi-repo platform,
+      I want to retrieve the relevant doc snippets from those other repos
+      directly into my current agent context,
+      so I can make informed decisions in Repo A without manual cross-repo
+      file-hunting and without relying on stale, manually-copied notes.
+    source: "docs/feature/ab-mcp/discover/problem-validation.md"
+    actor: "AI coding agent (e.g., Claude Code) operating in a new/different repo, on behalf of a developer dogfooding ab-mcp (single-stakeholder OSS, see problem-validation.md)"
+    job_map_steps:
+      - step: "Define"
+        pain: "Recognize that Repo A's question depends on Repo B's prior decisions"
+        desired_outcome: "Minimize time to identify which other repo(s) hold relevant context"
+      - step: "Locate"
+        pain: "cd into Repo B, grep through docs/ADRs to find relevant file"
+        desired_outcome: "Minimize time to gather relevant doc snippets from other repos"
+      - step: "Prepare"
+        pain: "Copy/paste relevant paragraph or whole CLAUDE.md section into Repo A"
+        desired_outcome: "Minimize manual copy-paste of cross-repo context"
+      - step: "Confirm"
+        pain: "No mechanism to verify pasted content is still accurate"
+        desired_outcome: "Minimize likelihood of stale/incorrect cross-repo context"
+      - step: "Monitor"
+        pain: "Pasted notes silently diverge from Repo B's current state over time"
+        desired_outcome: "Minimize uncertainty about whether retrieved context reflects Repo B's current state"
+    features:
+      - feature_id: ab-mcp
+        stories: ["US-01", "US-02", "US-03", "US-04", "US-05"]
+        scope_note: |
+          MVP scope = value prop 1 (context grounding) only, per D-scope
+          (docs/feature/ab-mcp/discover/wave-decisions.md). Ownership/boundary
+          mapping (value prop 2) is a deferred future-iteration job, not yet
+          mapped here.
+
+changelog:
+  - date: "2026-06-11"
+    feature: "ab-mcp"
+    change: "Bootstrapped docs/product/jobs.yaml with the validated cross-repo context grounding job from DISCOVER."

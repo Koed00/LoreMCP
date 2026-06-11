@@ -1,0 +1,266 @@
+schema_version: 1
+
+journey:
+  name: "Cross-Repo Context Retrieval"
+  goal: "An AI coding agent working in Repo A retrieves relevant, current, attributed documentation snippets (wave-decisions/ADRs/CLAUDE.md) from sibling Repo B/C/D via ab-mcp MCP tools, without manual copy-paste and without staleness."
+  persona: "AI coding agent (e.g., Claude Code) operating in a new/different repo, on behalf of a developer dogfooding ab-mcp (single-stakeholder OSS context, see docs/feature/ab-mcp/discover/problem-validation.md)"
+  job_reference: "docs/feature/ab-mcp/discover/problem-validation.md -- Job-to-be-Done: 'When working in Repo A and needing to understand a decision/convention from Repo B/C/D, retrieve relevant doc snippets directly into current agent context, so I can make informed decisions without manual cross-repo file-hunting or stale copies.'"
+
+  emotional_arc:
+    start: "Uncertain/Blocked -- agent recognizes Repo A's question depends on Repo B's prior decisions but has no direct access"
+    middle: "Investigating -- agent issues list_features/query_context tool calls against configured repos"
+    end: "Grounded/Confident -- agent has source-attributed, live snippet(s) and can proceed correctly; OR Grounded-with-caveat on structured error/warning responses"
+
+steps:
+  - id: 1
+    name: "Agent recognizes cross-repo dependency"
+    command: "(internal reasoning -- no tool call yet)"
+
+    tui_mockup: |
+      +-- Repo A: Agent reasoning -----------------------------------+
+      | Working on: implement pagination for /api/v2/orders          |
+      | Question: "What pagination convention does the platform use?"|
+      | -> This was likely decided in the backend repo, not here.    |
+      +-----------------------------------------------------------------+
+
+    shared_artifacts:
+      - name: "topic_of_interest"
+        source: "agent's current task context (Repo A)"
+        displayed_as: "${topic}"
+        consumers: ["step 2 (feature_id guess/search)"]
+
+    emotional_state:
+      entry: "Uncertain/Blocked"
+      exit: "Investigating"
+
+    integration_checkpoint: |
+      Agent must decide whether to call list_features() first (discovery) or
+      query_context() directly (if it already knows/guesses the feature_id).
+
+    failure_modes:
+      - "Agent has no idea which configured repo would hold the answer (no repo name hint)"
+
+    gherkin: |
+      Scenario: Agent recognizes a cross-repo question
+        Given an AI coding agent is implementing pagination in Repo A
+        When the agent determines the pagination convention was decided elsewhere
+        Then the agent plans to query ab-mcp for cross-repo context
+        And shared artifact "${topic}" is "pagination convention"
+
+  - id: 2
+    name: "Agent discovers available features in a configured repo"
+    command: "ab-mcp.list_features(repo_name)"
+
+    tui_mockup: |
+      +-- MCP Tool Call: list_features --------------------------------+
+      | Args: { "repo_name": "${repo_name}" }                          |
+      | Response:                                                       |
+      | { "repo_name": "${repo_name}", "doc_path": "${doc_path}",       |
+      |   "features": [ {"feature_id":"auth-pagination",                |
+      |                    "phases":["discover","discuss","design",     |
+      |                               "deliver"]} ],                     |
+      |   "has_architecture_adrs": true, "has_claude_md": true }        |
+      +-------------------------------------------------------------------+
+
+    shared_artifacts:
+      - name: "repo_name"
+        source: "ab-mcp config (list of {repo-name, doc-path} entries)"
+        displayed_as: "${repo_name}"
+        consumers: ["list_features args/response", "query_context args/response", "error responses"]
+      - name: "doc_path"
+        source: "ab-mcp config (list of {repo-name, doc-path} entries)"
+        displayed_as: "${doc_path}"
+        consumers: ["list_features response", "query_context source_file construction"]
+
+    emotional_state:
+      entry: "Investigating"
+      exit: "Investigating (narrowed scope -- has feature_id candidates)"
+
+    integration_checkpoint: |
+      list_features must read the configured doc_path's docs/feature/*/ directory
+      structure live and reflect docs/product/architecture/ and CLAUDE.md presence.
+
+    failure_modes:
+      - "Configured repo_name not found in config -> structured error with available_repos list"
+      - "Configured doc_path does not exist on disk -> REPO_PATH_NOT_FOUND error"
+      - "doc_path exists but has no nWave structure at all -> NO_NWAVE_STRUCTURE error"
+
+    gherkin: |
+      Scenario: Agent lists features available in a configured sibling repo
+        Given ab-mcp is configured with repo "backend-service" pointing at
+          "/Users/dev/code/backend-service/docs"
+        And "backend-service" has a docs/feature/auth-pagination/ directory
+        When the agent calls list_features("backend-service")
+        Then the response includes feature_id "auth-pagination"
+        And the response includes "has_architecture_adrs": true if
+          docs/product/architecture/ exists
+        And the response includes "doc_path" matching the configured path
+
+      Scenario: Configured repo path does not exist on disk
+        Given ab-mcp is configured with repo "billing-service" pointing at
+          "/Users/dev/code/billing-service/docs"
+        And that path does not exist on disk
+        When the agent calls list_features("billing-service")
+        Then the response is an error "REPO_PATH_NOT_FOUND"
+        And the response includes the configured_path that was checked
+        And the response includes available_repos from the rest of the config
+
+      Scenario: Configured repo has no nWave documentation structure
+        Given ab-mcp is configured with repo "legacy-payments" pointing at
+          "/Users/dev/code/legacy-payments/docs"
+        And that path exists but contains no docs/feature/**/wave-decisions.md,
+          no docs/product/architecture/, and no CLAUDE.md
+        When the agent calls list_features("legacy-payments")
+        Then the response is an error "NO_NWAVE_STRUCTURE"
+        And the message explains MVP requires nWave-structured docs
+
+  - id: 3
+    name: "Agent retrieves grounded context for a feature"
+    command: "ab-mcp.query_context(repo_name, feature_id)"
+
+    tui_mockup: |
+      +-- MCP Tool Call: query_context ---------------------------------+
+      | Args: { "repo_name": "${repo_name}",                            |
+      |         "feature_id": "${feature_id}" }                          |
+      | Response:                                                         |
+      | { "repo_name": "${repo_name}", "feature_id": "${feature_id}",     |
+      |   "results": [ { "source_file": "${source_file}",                 |
+      |                   "phase": "design",                              |
+      |                   "snippet": "## D-pagination: Cursor-based..." } |
+      |   ], "retrieved_at": "live (no cache)" }                          |
+      +---------------------------------------------------------------------+
+
+    shared_artifacts:
+      - name: "feature_id"
+        source: "Repo A agent's query (derived from list_features or own guess)"
+        displayed_as: "${feature_id}"
+        consumers: ["query_context args/response", "error responses (FEATURE_NOT_FOUND)"]
+      - name: "source_file"
+        source: "filesystem path constructed from ${doc_path} + nWave-relative path (e.g., feature/{feature_id}/design/wave-decisions.md, product/architecture/ADR-NNNN-*.md, CLAUDE.md)"
+        displayed_as: "${source_file}"
+        consumers: ["query_context response (every snippet)", "agent's source attribution to developer"]
+
+    emotional_state:
+      entry: "Investigating (narrowed scope)"
+      exit: "Grounded/Confident"
+
+    integration_checkpoint: |
+      Every returned snippet must carry source_file traceable to ${doc_path}.
+      Filesystem is read live at call time -- zero caching (validates D-retrieval-risk/H2).
+
+    failure_modes:
+      - "feature_id not found in target repo -> FEATURE_NOT_FOUND error with available_features list"
+      - "feature has only ADRs, no wave-decisions.md/feature-delta.md -> partial result with warnings array"
+      - "feature has only CLAUDE.md, no feature-level docs at all -> partial result sourced from CLAUDE.md with warnings array"
+
+    gherkin: |
+      Scenario: Agent retrieves wave decisions and ADR context for a known feature
+        Given ab-mcp is configured with repo "backend-service" pointing at
+          "/Users/dev/code/backend-service/docs"
+        And "backend-service" has docs/feature/auth-pagination/design/wave-decisions.md
+          containing "Cursor-based pagination... opaque cursor tokens"
+        And "backend-service" has docs/product/architecture/ADR-0007-pagination.md
+          containing "Decision: cursor-based over offset-based"
+        When the agent calls query_context("backend-service", "auth-pagination")
+        Then the response includes a result with source_file ending in
+          "feature/auth-pagination/design/wave-decisions.md"
+        And the response includes a result with source_file ending in
+          "product/architecture/ADR-0007-pagination.md"
+        And each result's snippet contains the relevant decision text
+        And "retrieved_at" indicates a live (uncached) read
+
+      Scenario: Requested feature_id does not exist in the target repo
+        Given ab-mcp is configured with repo "frontend-web" pointing at
+          "/Users/dev/code/frontend-web/docs"
+        And "frontend-web" has no docs/feature/auth-pagination/ directory
+        When the agent calls query_context("frontend-web", "auth-pagination")
+        Then the response is an error "FEATURE_NOT_FOUND"
+        And the response includes available_features from "frontend-web"
+
+      Scenario: Repo has ADRs but no wave-decisions.md for the feature (partial nWave structure)
+        Given ab-mcp is configured with repo "cerbos" pointing at
+          "/Users/dev/code/cerbos/docs"
+        And "cerbos" has docs/product/architecture/ADR-0012-policy-format.md
+        And "cerbos" has no docs/feature/permission-policies/wave-decisions.md
+        When the agent calls query_context("cerbos", "permission-policies")
+        Then the response includes a result sourced from
+          "product/architecture/ADR-0012-policy-format.md"
+        And the response includes a warning that no feature-level wave-decisions.md
+          was found
+        And the response is not an error (partial results still returned)
+
+      Scenario: Repo has only CLAUDE.md (minimal nWave structure)
+        Given ab-mcp is configured with repo "frontend-mobile" pointing at
+          "/Users/dev/code/frontend-mobile/docs"
+        And "frontend-mobile" has only a CLAUDE.md file with a section on
+          "API conventions"
+        When the agent calls query_context("frontend-mobile", "auth-pagination")
+        Then the response includes a result sourced from "CLAUDE.md"
+        And the response includes a warning that only CLAUDE.md-level context
+          was found, no feature-specific or ADR-level documentation
+
+  - id: 4
+    name: "Agent uses retrieved context to ground its work"
+    command: "(internal reasoning -- no further tool call)"
+
+    tui_mockup: |
+      +-- Repo A: Agent reasoning (post-retrieval) ---------------------+
+      | Retrieved from "backend-service":                                |
+      |   feature/auth-pagination/design/wave-decisions.md ->            |
+      |     "Cursor-based pagination, opaque base64 tokens"               |
+      |   product/architecture/ADR-0007-pagination.md ->                  |
+      |     "Decision: cursor-based over offset-based"                    |
+      | -> Implementing /api/v2/orders pagination using cursor tokens,    |
+      |    consistent with backend-service's established convention.      |
+      |    (Source: backend-service/docs/product/architecture/             |
+      |     ADR-0007-pagination.md)                                        |
+      +---------------------------------------------------------------------+
+
+    shared_artifacts: []
+
+    emotional_state:
+      entry: "Grounded/Confident"
+      exit: "Grounded/Confident -- decision made with attribution"
+
+    integration_checkpoint: |
+      Agent's resulting code/decision in Repo A should reference the source_file(s)
+      it grounded on (e.g., in a comment or commit message), enabling traceability.
+
+    failure_modes:
+      - "Agent ignores the warnings array on partial results and proceeds as if
+         fully grounded -- should surface caveat to developer"
+
+    gherkin: |
+      Scenario: Agent grounds its implementation decision with source attribution
+        Given the agent received a query_context response with results from
+          "backend-service/docs/product/architecture/ADR-0007-pagination.md"
+        When the agent implements pagination for Repo A's /api/v2/orders endpoint
+        Then the agent's implementation uses cursor-based pagination
+        And the agent's explanation/comment cites
+          "backend-service/docs/product/architecture/ADR-0007-pagination.md"
+          as the source of the convention
+
+      Scenario: Agent surfaces a caveat when context is partial
+        Given the agent received a query_context response with a warnings array
+          stating "no feature-level wave-decisions.md found"
+        When the agent uses the returned ADR-only context to make a decision
+        Then the agent's response to the developer includes the caveat that
+          only architecture-level (ADR) context was available
+        And the agent does not present the decision as fully feature-grounded
+
+integration_validation:
+  shared_artifact_consistency:
+    - artifact: "repo_name"
+      must_match_across: [2, 3]
+      failure_message: "repo_name used in query_context must be one returned by list_features (or present in ab-mcp config)"
+    - artifact: "doc_path"
+      must_match_across: [2, 3]
+      failure_message: "doc_path must come from the same ab-mcp config entry for both tools -- no divergent path resolution"
+    - artifact: "source_file"
+      must_match_across: [3, 4]
+      failure_message: "source_file returned by query_context must be the same path the agent cites when grounding its decision"
+
+changelog:
+  - date: "2026-06-11"
+    feature: "ab-mcp"
+    change: "Initial DISCUSS journey for cross-repo context retrieval (walking skeleton + error paths), grounded in DISCOVER problem-validation.md job story and D-docquality (REVISED) nWave-structured-only scope."

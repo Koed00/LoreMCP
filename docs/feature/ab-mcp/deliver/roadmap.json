@@ -1,0 +1,251 @@
+{
+  "roadmap": {
+    "project_id": "ab-mcp",
+    "created_at": "2026-06-11T17:52:51Z",
+    "total_steps": 12,
+    "phases": 4
+  },
+  "phases": [
+    {
+      "id": "01",
+      "name": "Walking Skeleton -- end-to-end MCP server over real local filesystem",
+      "steps": [
+        {
+          "id": "01-01",
+          "name": "Implement config-loader: load and validate ab-mcp.config.json",
+          "criteria": "loadConfig(configPath) reads the JSON file at configPath, parses it, and returns RepoEntry[] ({repo_name, doc_path}). Throws/returns a structured error (not a raw exception) if the file is missing, not valid JSON, or does not match the expected shape (array of objects each with non-empty string repo_name and doc_path). Supports the AB_MCP_CONFIG environment variable used by the acceptance subprocess. __SCAFFOLD__ marker and 'Not yet implemented' throw removed.",
+          "test_file": "tests/core/config-loader.test.ts",
+          "scenario_name": "Agent retrieves the Critical Reframe decision text end-to-end, Server boots and exposes both tools to the calling agent",
+          "files_to_modify": [
+            "src/shell/config-loader.ts",
+            "tests/core/config-loader.test.ts"
+          ],
+          "implementation_scope": {
+            "source_directories": ["src/shell/"],
+            "test_directories": ["tests/core/", "tests/unit/"]
+          }
+        },
+        {
+          "id": "01-02",
+          "name": "Implement fs-doc-tree-reader: real fs adapter with probe() covering all 6 fault scenarios",
+          "criteria": "createFsDocTreeReader() returns a DocTreeReader implementing probe(doc_path), pathExists(path), listDir(path), readFile(path) against real node:fs/promises. probe() returns a structured ProbeResult (never throws) for: (1) path does not exist, (2) path exists but is not a directory, (3) path exists but is not readable (permission denied, checked via fs.access R_OK), (4) file disappears between listDir and readFile (TOCTOU -- readFile returns a structured 'not found' outcome, never an unhandled rejection), (5) symlink escaping doc_path root is followed and read normally (documented non-goal, not a probe failure), (6) directory listing/matching uses exact readdir results (case-sensitive comparison), never assumed-case path construction. fs-doc-tree-reader.probe.test.ts exercises all 6 named scenarios against real temp directories (node:os.tmpdir()). probe-contract.test.ts (meta-test) asserts fs-doc-tree-reader.probe.test.ts exists and contains test cases for all 6 named scenarios by string-matching it(...) descriptions. __SCAFFOLD__ marker and throws removed from all 4 methods.",
+          "test_file": "tests/shell/fs-doc-tree-reader.probe.test.ts",
+          "scenario_name": "Agent retrieves the Critical Reframe decision text end-to-end",
+          "files_to_modify": [
+            "src/shell/fs-doc-tree-reader.ts",
+            "tests/shell/fs-doc-tree-reader.probe.test.ts",
+            "tests/shell/probe-contract.test.ts"
+          ],
+          "implementation_scope": {
+            "source_directories": ["src/shell/"],
+            "test_directories": ["tests/shell/"]
+          }
+        },
+        {
+          "id": "01-03",
+          "name": "Implement classify-structure: pure classification per Decision 4/5 precedence rules",
+          "criteria": "classifyStructure(snapshot, featureId) implements the precedence order from brief.md Decision 5 (REPO_NOT_CONFIGURED/REPO_PATH_NOT_FOUND handled upstream by shell; this function handles steps 2-5): returns NO_NWAVE_STRUCTURE if the repo has none of {docs/feature/*, docs/product/architecture/*.md, CLAUDE.md}; returns FEATURE_NOT_FOUND with available_features if docs/feature/{featureId}/ does not exist AND no ADRs/CLAUDE.md fallback exists; otherwise returns ClassifyResult listing FileToRead entries (wave-decisions.md/feature-delta.md per phase, ADRs sorted by filename, CLAUDE.md) plus warnings per Decision 4 rules (no-feature-level-decisions warning, only-CLAUDE.md warning, truncation warning at 8000-char heading-aligned boundary). classifyRepoForListFeatures(snapshot) returns ListFeaturesResult: features (feature_id + sorted phases array), has_architecture_adrs, has_claude_md, or NO_NWAVE_STRUCTURE outcome. Both functions are pure (no fs imports), tested exclusively with in-memory TreeSnapshot fixtures covering every outcome (NO_NWAVE_STRUCTURE, FEATURE_NOT_FOUND, full-structure, ADRs-only, CLAUDE.md-only, truncation boundary). __SCAFFOLD__ marker and throws removed.",
+          "test_file": "tests/core/classify-structure.test.ts",
+          "scenario_name": "Agent retrieves the Critical Reframe decision text end-to-end, Agent receives a clear error for a feature that does not exist yet, Agent discovers ab-mcp's own feature documentation",
+          "files_to_modify": [
+            "src/core/classify-structure.ts",
+            "tests/core/classify-structure.test.ts"
+          ],
+          "implementation_scope": {
+            "source_directories": ["src/core/"],
+            "test_directories": ["tests/core/"]
+          }
+        },
+        {
+          "id": "01-04",
+          "name": "Implement format-response: shape success/error/warning JSON contracts",
+          "criteria": "formatQueryContextResponse and formatListFeaturesResponse shape ClassifyResult/ListFeaturesResult into the exact response contracts from brief.md Section 8 ({repo_name, feature_id, results:[{source_file, phase, snippet}], retrieved_at, warnings?} and {repo_name, doc_path, features:[{feature_id, phases}], has_architecture_adrs, has_claude_md}). formatRepoNotConfigured/formatRepoPathNotFound/formatFeatureNotFound/formatNoNwaveStructure produce the 4 documented SCREAMING_SNAKE_CASE error shapes ({error, repo_name, message, available_repos}/{error, repo_name, configured_path, message, available_repos}/{error, repo_name, feature_id, message, available_features}/{error, repo_name, configured_path, message}) -- never raw exceptions. retrieved_at is an ISO-8601 timestamp generated fresh per call (no caching). All functions pure, tested with in-memory inputs covering every shape and every error code. __SCAFFOLD__ marker and throws removed.",
+          "test_file": "tests/core/format-response.test.ts",
+          "scenario_name": "Agent retrieves the Critical Reframe decision text end-to-end, Agent receives a clear error for a feature that does not exist yet",
+          "files_to_modify": [
+            "src/core/format-response.ts",
+            "tests/core/format-response.test.ts"
+          ],
+          "implementation_scope": {
+            "source_directories": ["src/core/"],
+            "test_directories": ["tests/core/"]
+          }
+        },
+        {
+          "id": "01-05",
+          "name": "Wire server.ts composition root: real TreeSnapshot, reader probing, and core calls",
+          "criteria": "src/shell/server.ts TODO comments are resolved: query_context and list_features handlers call loadConfig (with REPO_NOT_CONFIGURED check against repo_name), reader.probe(doc_path) (REPO_PATH_NOT_FOUND on failure), build a real TreeSnapshot via reader.listDir/pathExists across docs/feature/*, docs/product/architecture/, CLAUDE.md, call classifyStructure/classifyRepoForListFeatures, read matched files via reader.readFile (TOCTOU-missing files omitted with a warning, never thrown), and call formatQueryContextResponse/formatListFeaturesResponse to shape the final tool result. Composition-root 'wire then probe then use': on startup, each configured entry is probed and a structured health.startup.refused event is logged to stderr per failing entry without preventing server start; malformed/missing config file itself causes process exit non-zero with health.startup.refused. After this step: the @walking_skeleton scenario AND the other 3 non-skip scenarios in walking-skeleton.feature (server boot, list_features happy path, FEATURE_NOT_FOUND) are GREEN.",
+          "test_file": "tests/acceptance/ab-mcp/walking-skeleton.steps.ts",
+          "scenario_name": "Agent retrieves the Critical Reframe decision text end-to-end, Server boots and exposes both tools to the calling agent, Agent discovers ab-mcp's own feature documentation, Agent receives a clear error for a feature that does not exist yet",
+          "files_to_modify": [
+            "src/shell/server.ts",
+            "src/index.ts"
+          ],
+          "implementation_scope": {
+            "source_directories": ["src/shell/", "src/"],
+            "test_directories": ["tests/acceptance/ab-mcp/"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "02",
+      "name": "Release 1 -- Multi-repo retrieval and structured error paths (US-02/US-03)",
+      "steps": [
+        {
+          "id": "02-01",
+          "name": "Multi-repo retrieval: per-repo isolation and list_features across configured repos",
+          "criteria": "With 3 configured repos (ab-mcp, repo-b, repo-c), query_context for repo-b/feature widgets returns a result rooted in repo-b's configured doc_path whose snippet contains the fixture's wave-decisions.md content. Querying repo-b/logging and repo-c/logging (both having distinct docs/feature/logging/wave-decisions.md content) returns results rooted in each repo's own doc_path with differing snippets -- no cross-contamination. list_features for ab-mcp and repo-b each return feature lists and doc_paths reflecting that repo's own docs/feature/ contents, with differing doc_path values matching each repo's configuration. Un-skip and pass the 3 corresponding scenarios in release-1-multi-repo-and-errors.feature.",
+          "test_file": "tests/acceptance/ab-mcp/release-1-multi-repo-and-errors.steps.ts",
+          "scenario_name": "Agent retrieves a feature's design decision from the second configured repo, Results from different repos do not cross-contaminate, list_features returns distinct feature lists per repo",
+          "files_to_modify": [
+            "src/shell/server.ts",
+            "src/core/classify-structure.ts",
+            "tests/acceptance/ab-mcp/release-1-multi-repo-and-errors.steps.ts",
+            "tests/acceptance/ab-mcp/release-1-multi-repo-and-errors.feature"
+          ],
+          "implementation_scope": {
+            "source_directories": ["src/shell/", "src/core/"],
+            "test_directories": ["tests/acceptance/ab-mcp/"]
+          }
+        },
+        {
+          "id": "02-02",
+          "name": "REPO_NOT_CONFIGURED and REPO_PATH_NOT_FOUND structured errors with available_repos",
+          "criteria": "list_features for an unconfigured repo_name (e.g. 'repo-not-configured') returns error REPO_NOT_CONFIGURED with available_repos listing all 3 configured repo names ('ab-mcp', 'repo-b', 'repo-c'). query_context for repo-c, when repo-c's configured doc_path does not exist on disk, returns error REPO_PATH_NOT_FOUND including the configured_path that was checked and available_repos listing the other 2 configured repos. probe() fault scenario 1 (path does not exist) is exercised via this real fixture (@adapter-integration). Un-skip and pass the 2 corresponding scenarios in release-1-multi-repo-and-errors.feature.",
+          "test_file": "tests/acceptance/ab-mcp/release-1-multi-repo-and-errors.steps.ts",
+          "scenario_name": "Agent queries a repo name that is not configured, Agent receives REPO_PATH_NOT_FOUND for a configured repo whose path moved",
+          "files_to_modify": [
+            "src/shell/server.ts",
+            "src/core/format-response.ts",
+            "tests/acceptance/ab-mcp/release-1-multi-repo-and-errors.steps.ts",
+            "tests/acceptance/ab-mcp/release-1-multi-repo-and-errors.feature"
+          ],
+          "implementation_scope": {
+            "source_directories": ["src/shell/", "src/core/"],
+            "test_directories": ["tests/acceptance/ab-mcp/"]
+          }
+        },
+        {
+          "id": "02-03",
+          "name": "FEATURE_NOT_FOUND with accurate available_features, and permission-denied paths never leak raw exceptions",
+          "criteria": "query_context for repo-b/feature 'loggin' (typo, only docs/feature/logging/ exists) returns error FEATURE_NOT_FOUND with available_features including 'logging'. query_context for repo-c, when repo-c's configured doc_path exists but is not readable by the current user (permission denied), returns a structured JSON error response (one of the 4 documented error shapes) containing no raw stack trace or unhandled-exception text -- exercises probe() fault scenario 3 (permission denied -> REPO_PATH_NOT_FOUND, via fs.access R_OK) (@adapter-integration). Un-skip and pass the 2 corresponding scenarios in release-1-multi-repo-and-errors.feature, completing the file (all 7 scenarios green).",
+          "test_file": "tests/acceptance/ab-mcp/release-1-multi-repo-and-errors.steps.ts",
+          "scenario_name": "Agent receives FEATURE_NOT_FOUND with accurate available features, A permission-denied repo path never leaks a raw exception",
+          "files_to_modify": [
+            "src/shell/server.ts",
+            "src/shell/fs-doc-tree-reader.ts",
+            "src/core/classify-structure.ts",
+            "src/core/format-response.ts",
+            "tests/acceptance/ab-mcp/release-1-multi-repo-and-errors.steps.ts",
+            "tests/acceptance/ab-mcp/release-1-multi-repo-and-errors.feature"
+          ],
+          "implementation_scope": {
+            "source_directories": ["src/shell/", "src/core/"],
+            "test_directories": ["tests/acceptance/ab-mcp/"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "03",
+      "name": "Release 2 -- Partial nWave structure, best-available-context with completeness warnings (US-04)",
+      "steps": [
+        {
+          "id": "03-01",
+          "name": "Partial-structure repos: ADRs-only, CLAUDE.md-only, and no-structure responses",
+          "criteria": "query_context for adrs-only-repo/feature 'permission-policies' (has docs/product/architecture/ADR-0012-policy-format.md, no docs/feature/permission-policies/) returns a non-error result whose source_file ends with 'product/architecture/ADR-0012-policy-format.md' plus a warning mentioning 'no feature-level wave-decisions.md'. query_context for claude-md-only-repo/feature 'auth-pagination' (only a CLAUDE.md containing '## API Conventions') returns a result whose source_file ends with 'CLAUDE.md', whose snippet contains 'API Conventions', plus a warning mentioning 'only CLAUDE.md-level context'. query_context for no-structure-repo/feature 'any-feature-id' (only README.md and manuals/, no nWave artifacts) returns error NO_NWAVE_STRUCTURE with a message explaining nWave-structured docs are required. Implements Decision 5 OQ-2 precedence (feature dir absent but ADRs/CLAUDE.md present -> partial result + warning, never FEATURE_NOT_FOUND). Un-skip and pass the 3 corresponding scenarios in release-2-partial-structure.feature.",
+          "test_file": "tests/acceptance/ab-mcp/release-2-partial-structure.steps.ts",
+          "scenario_name": "Repo with ADRs but no feature-level decisions returns ADR content with a warning, Repo with only a CLAUDE.md returns its content with a distinct warning, Repo with zero nWave artifacts returns NO_NWAVE_STRUCTURE",
+          "files_to_modify": [
+            "src/core/classify-structure.ts",
+            "src/core/format-response.ts",
+            "src/shell/server.ts",
+            "tests/acceptance/ab-mcp/release-2-partial-structure.steps.ts",
+            "tests/acceptance/ab-mcp/release-2-partial-structure.feature"
+          ],
+          "implementation_scope": {
+            "source_directories": ["src/core/", "src/shell/"],
+            "test_directories": ["tests/acceptance/ab-mcp/"]
+          }
+        },
+        {
+          "id": "03-02",
+          "name": "list_features completeness flags and no false-positive warnings on full-structure repos",
+          "criteria": "list_features for adrs-only-repo returns has_architecture_adrs true. list_features for claude-md-only-repo returns has_architecture_adrs false and has_claude_md true. query_context for the full-structure ab-mcp repo (which has docs/feature/ab-mcp/discover/wave-decisions.md) returns a response with no warnings entry at all (no false-positive partial-structure warnings on a complete repo). Un-skip and pass the 2 corresponding scenarios in release-2-partial-structure.feature, completing the file (all 5 scenarios green).",
+          "test_file": "tests/acceptance/ab-mcp/release-2-partial-structure.steps.ts",
+          "scenario_name": "list_features reports structure-completeness flags accurately, Full-structure repo returns no false-positive warnings",
+          "files_to_modify": [
+            "src/core/classify-structure.ts",
+            "src/core/format-response.ts",
+            "tests/acceptance/ab-mcp/release-2-partial-structure.steps.ts",
+            "tests/acceptance/ab-mcp/release-2-partial-structure.feature"
+          ],
+          "implementation_scope": {
+            "source_directories": ["src/core/", "src/shell/"],
+            "test_directories": ["tests/acceptance/ab-mcp/"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "04",
+      "name": "Release 3 -- No-staleness property verification (US-05)",
+      "steps": [
+        {
+          "id": "04-01",
+          "name": "Live re-read reflects on-disk edits in the very next query (no caching, TOCTOU-adjacent)",
+          "criteria": "query_context for ab-mcp/feature 'ab-mcp' returns a snippet that does not contain 'TEMP-VERIFY-LIVE-READ' before the line is appended to docs/feature/ab-mcp/discover/wave-decisions.md on disk. After appending the line and calling query_context again with no server restart, the response's snippet contains 'TEMP-VERIFY-LIVE-READ'. Confirms the DocTreeReader performs a fresh readFile on every call, no in-memory caching anywhere in the request path (@adapter-integration). Un-skip and pass the corresponding scenario in release-3-no-staleness.feature.",
+          "test_file": "tests/acceptance/ab-mcp/release-3-no-staleness.steps.ts",
+          "scenario_name": "An edit to a source repo's doc file is reflected in the very next query",
+          "files_to_modify": [
+            "src/shell/server.ts",
+            "src/shell/fs-doc-tree-reader.ts",
+            "tests/acceptance/ab-mcp/release-3-no-staleness.steps.ts",
+            "tests/acceptance/ab-mcp/release-3-no-staleness.feature"
+          ],
+          "implementation_scope": {
+            "source_directories": ["src/shell/"],
+            "test_directories": ["tests/acceptance/ab-mcp/"]
+          }
+        },
+        {
+          "id": "04-02",
+          "name": "retrieved_at present on every response and successive queries reflect latest on-disk state",
+          "criteria": "Two successive query_context calls for ab-mcp/feature 'ab-mcp' (no file changes in between) each include a retrieved_at field (fresh ISO-8601 timestamp per call, indicating live/uncached read), with identical snippet content between the two responses. A first query_context call (call 1) does not contain 'D-temp: temporary verification line'; after appending that line to docs/feature/ab-mcp/discover/wave-decisions.md on disk, a second call (call 2) contains it while call 1's already-returned snippet did not. Un-skip and pass the 2 corresponding scenarios in release-3-no-staleness.feature, completing the file (all 3 scenarios green).",
+          "test_file": "tests/acceptance/ab-mcp/release-3-no-staleness.steps.ts",
+          "scenario_name": "retrieved_at marker is present on every response, even with unchanged content, Successive queries each reflect the latest on-disk state",
+          "files_to_modify": [
+            "src/core/format-response.ts",
+            "src/shell/server.ts",
+            "tests/acceptance/ab-mcp/release-3-no-staleness.steps.ts",
+            "tests/acceptance/ab-mcp/release-3-no-staleness.feature"
+          ],
+          "implementation_scope": {
+            "source_directories": ["src/core/", "src/shell/"],
+            "test_directories": ["tests/acceptance/ab-mcp/"]
+          }
+        }
+      ]
+    }
+  ],
+  "implementation_scope": {
+    "source_directories": [
+      "src/core/",
+      "src/shell/",
+      "src/"
+    ],
+    "test_directories": [
+      "tests/"
+    ],
+    "excluded_patterns": [
+      "dist/**",
+      "node_modules/**"
+    ]
+  },
+  "validation": {
+    "status": "approved",
+    "reviewer": "nw-acceptance-designer-reviewer",
+    "approved_at": "2026-06-11T18:30:00Z"
+  }
+}

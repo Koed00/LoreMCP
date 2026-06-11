@@ -1,0 +1,27 @@
+schema_version: 1
+
+# Product SSOT pointer -- canonical detailed schema lives at:
+#   docs/feature/ab-mcp/discuss/journey-cross-repo-context-retrieval.yaml
+# This file carries forward the top-level journey definition for
+# cross-feature/product-level discoverability. Steps, shared_artifacts,
+# and gherkin detail are maintained in the feature-level file (single
+# source of truth) -- do not duplicate step-level detail here.
+
+journey:
+  name: "Cross-Repo Context Retrieval"
+  goal: "An AI coding agent working in Repo A retrieves relevant, current, attributed documentation snippets (wave-decisions/ADRs/CLAUDE.md) from sibling Repo B/C/D via ab-mcp MCP tools, without manual copy-paste and without staleness."
+  persona: "AI coding agent (e.g., Claude Code) operating in a new/different repo, on behalf of a developer dogfooding ab-mcp (single-stakeholder OSS, see docs/feature/ab-mcp/discover/problem-validation.md)"
+  job_reference: "docs/product/jobs.yaml -- job id: cross-repo-context-grounding"
+  detailed_schema: "docs/feature/ab-mcp/discuss/journey-cross-repo-context-retrieval.yaml"
+
+  emotional_arc:
+    start: "Uncertain/Blocked -- agent recognizes Repo A's question depends on Repo B's prior decisions but has no direct access"
+    middle: "Investigating -- agent issues list_features/query_context tool calls against configured repos"
+    end: "Grounded/Confident -- agent has source-attributed, live snippet(s) and can proceed correctly; OR Grounded-with-caveat on structured error/warning responses"
+
+originating_feature: "ab-mcp"
+
+changelog:
+  - date: "2026-06-11"
+    feature: "ab-mcp"
+    change: "Bootstrapped product-level journey pointer from ab-mcp DISCUSS journey schema (first feature in this product)."

@@ -1,0 +1,85 @@
+# environments.yaml -- ab-mcp
+# Consumed by DISTILL for Mandate 4 (Environmental Realism)
+#
+# ab-mcp is a local stdio MCP server / npm package (no install-time side
+# effects, no daemons, no hooks -- see platform-architecture.md). It does NOT
+# fit the standard "tool installs into a dev environment" template, so the
+# environment inventory below is reframed around the FILESYSTEM STATES the
+# Doc-Tree Scanner / Content Extractor must handle, per brief.md Section 9
+# (Probe Contracts for Filesystem Adapters, Principle 12). These are the
+# conditions DISTILL should parametrize acceptance scenarios over.
+
+target_environments:
+  - name: clean
+    description: "Config + all configured repo doc_paths exist, well-formed nWave structure (full wave-decisions.md/feature-delta.md, ADRs, CLAUDE.md)"
+    platform: [linux, macos, wsl]
+    preconditions: ["ab-mcp.config.json valid", "all configured doc_path entries exist and are directories"]
+
+  - name: repo-not-configured
+    description: "query_context/list_features called with a repo_name absent from config"
+    platform: [linux, macos, wsl]
+    preconditions: ["ab-mcp.config.json valid", "requested repo_name not in config.repos"]
+
+  - name: repo-path-not-found
+    description: "Configured doc_path does not exist on disk (moved/deleted sibling repo)"
+    platform: [linux, macos, wsl]
+    preconditions: ["ab-mcp.config.json references a doc_path that does not exist"]
+
+  - name: repo-path-not-a-directory
+    description: "Configured doc_path exists but is a file, not a directory"
+    platform: [linux, macos, wsl]
+    preconditions: ["doc_path points at a regular file"]
+
+  - name: permission-denied
+    description: "Configured doc_path exists but is not readable by the current user"
+    platform: [linux, macos]
+    preconditions: ["doc_path has mode 000 or owner-only perms differing from process uid"]
+
+  - name: partial-nwave-adrs-only
+    description: "Repo has docs/product/architecture/*.md but no docs/feature/{feature_id}/ and no CLAUDE.md"
+    platform: [linux, macos, wsl]
+    preconditions: ["fixture repo per discuss/wave-decisions.md Upstream Changes #2 (Slice 03 mock-repo completeness levels)"]
+
+  - name: partial-nwave-claude-md-only
+    description: "Repo has CLAUDE.md but no docs/feature/{feature_id}/ and no docs/product/architecture/"
+    platform: [linux, macos, wsl]
+    preconditions: ["fixture repo per discuss/wave-decisions.md Upstream Changes #2"]
+
+  - name: no-nwave-structure
+    description: "Repo has none of {docs/feature/*, docs/product/architecture/*.md, CLAUDE.md}"
+    platform: [linux, macos, wsl]
+    preconditions: ["doc_path exists and is a directory but contains no nWave artifacts"]
+
+  - name: feature-id-not-found-with-fallback
+    description: "docs/feature/{feature_id}/ absent BUT repo has ADRs and/or CLAUDE.md (OQ-2 resolution: partial result + warnings, not FEATURE_NOT_FOUND)"
+    platform: [linux, macos, wsl]
+    preconditions: ["requested feature_id has no matching directory under docs/feature/", "repo has ADRs and/or CLAUDE.md"]
+
+  - name: live-edit-no-staleness
+    description: "Source doc file is edited between two consecutive query_context calls (KPI-2 / Slice 04 property test)"
+    platform: [linux, macos, wsl]
+    preconditions: ["clean environment", "test harness can write to fixture doc files between calls"]
+
+  - name: case-insensitive-fs
+    description: "macOS default (APFS case-insensitive) -- verifies path matching for CLAUDE.md / wave-decisions.md / feature-delta.md does not silently match wrong-case files"
+    platform: [macos]
+    preconditions: ["fixture repo with mixed-case file present, e.g. Claude.md alongside expected CLAUDE.md"]
+
+coexistence_matrix:
+  # ab-mcp has no install-time hooks, no daemons, and modifies nothing outside
+  # its own process memory -- there is nothing for it to "break". The only
+  # coexistence concern is at the MCP-host level:
+  - tool: other-configured-mcp-servers
+    must_not_break: true
+    note: "ab-mcp must not crash the host process or hang stdio if misconfigured (e.g., bad ab-mcp.config.json) -- must emit a structured error and exit/respond cleanly, not block other MCP servers in the same host session"
+
+platform_coverage:
+  macOS: [13.x, 14.x]
+  Linux: [Ubuntu 22.04, Ubuntu 24.04]
+  WSL: [WSL2]
+  CI: [GitHub Actions ubuntu-latest]
+
+deployment_assumptions:
+  - "npm package install/uninstall is standard npm behavior -- no custom install scripts, so idempotency and uninstall-safety are inherited from npm itself (no ab-mcp-specific verification needed)"
+  - "ab-mcp performs ZERO writes to any configured repo or its own working directory (read-only per D-scope/ADR-004) -- environment teardown between test scenarios is just deleting fixture directories, no state to roll back"
+  - "All filesystem-state scenarios above (repo-path-not-found, permission-denied, etc.) MUST be exercised against the DocTreeReader.probe() contract (brief.md Section 9) before being wired into list_features/query_context -- probe failures must degrade gracefully (warnings/errors), never throw raw exceptions to the MCP transport"
