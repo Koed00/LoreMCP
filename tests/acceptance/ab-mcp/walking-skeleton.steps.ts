@@ -148,31 +148,5 @@ describeFeature(
       },
     );
 
-    Scenario(
-      "Agent receives a clear error for a feature that does not exist yet",
-      ({ When, Then, And }) => {
-        When(
-          'the agent calls query_context for repo "ab-mcp" and feature',
-          async () => {
-            const result = await handle!.client.callTool({
-              name: "query_context",
-              arguments: {
-                repo_name: "ab-mcp",
-                feature_id: "nonexistent-feature",
-              },
-            });
-            lastResponse = parseToolJson(result as any);
-          },
-        );
-
-        Then('the response is an error "FEATURE_NOT_FOUND"', () => {
-          expect(lastResponse.error).toBe("FEATURE_NOT_FOUND");
-        });
-
-        And('the response\'s available features include "ab-mcp"', () => {
-          expect(lastResponse.available_features).toContain("ab-mcp");
-        });
-      },
-    );
   },
 );

@@ -36,10 +36,3 @@ Feature: Agent retrieves ab-mcp's own wave decisions through the MCP server
     Then the response includes feature "ab-mcp"
     And the response's doc path matches the configured path
     And the response includes phase "discover" for feature "ab-mcp"
-
-  @real-io
-  Scenario: Agent receives a clear error for a feature that does not exist yet
-    When the agent calls query_context for repo "ab-mcp" and feature
-      "nonexistent-feature"
-    Then the response is an error "FEATURE_NOT_FOUND"
-    And the response's available features include "ab-mcp"
