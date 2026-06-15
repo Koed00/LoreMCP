@@ -2,7 +2,13 @@
   "permissions": {
     "allow": [
       "Bash(npm run *)",
-      "Bash(npm test *)"
+      "Bash(npm test *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(npx vitest *)",
+      "Bash(cat)",
+      "Bash(npx tsx *)",
+      "Bash(cp /tmp/check-parse.mjs ./check-parse.mjs && npx tsx ./check-parse.mjs; rm ./check-parse.mjs)"
     ]
   }
 }
