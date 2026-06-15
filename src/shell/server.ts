@@ -126,6 +126,7 @@ export function createServer(options: CreateServerOptions): McpServer {
       const result = formatQueryContextResponse(
         entry.repoName,
         feature_id,
+        entry.docPath,
         classified,
         new Map(),
       );

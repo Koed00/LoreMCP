@@ -1,11 +1,8 @@
 // Pure core: shapes the 4 structured error responses + the success/partial
 // list_features/query_context response contracts (brief.md Section 8).
-// RED scaffold -- created by DISTILL (nw-distill).
-export const __SCAFFOLD__ = true;
 
 import type {
   ClassifyResult,
-  FileToRead,
   ListFeaturesResult,
 } from "./classify-structure.js";
 
@@ -71,7 +68,12 @@ export function formatRepoNotConfigured(
   repoName: string,
   availableRepos: string[],
 ): RepoNotConfiguredError {
-  throw new Error("Not yet implemented -- RED scaffold");
+  return {
+    error: "REPO_NOT_CONFIGURED",
+    repoName,
+    message: `Repo "${repoName}" is not configured in ab-mcp.config.json.`,
+    availableRepos,
+  };
 }
 
 export function formatRepoPathNotFound(
@@ -79,7 +81,13 @@ export function formatRepoPathNotFound(
   configuredPath: string,
   availableRepos: string[],
 ): RepoPathNotFoundError {
-  throw new Error("Not yet implemented -- RED scaffold");
+  return {
+    error: "REPO_PATH_NOT_FOUND",
+    repoName,
+    configuredPath,
+    message: `Configured path "${configuredPath}" for repo "${repoName}" does not exist or is not readable.`,
+    availableRepos,
+  };
 }
 
 export function formatFeatureNotFound(
@@ -87,23 +95,73 @@ export function formatFeatureNotFound(
   featureId: string,
   availableFeatures: string[],
 ): FeatureNotFoundError {
-  throw new Error("Not yet implemented -- RED scaffold");
+  return {
+    error: "FEATURE_NOT_FOUND",
+    repoName,
+    featureId,
+    message: `Feature "${featureId}" was not found in repo "${repoName}".`,
+    availableFeatures,
+  };
 }
 
 export function formatNoNwaveStructure(
   repoName: string,
   configuredPath: string,
 ): NoNwaveStructureError {
-  throw new Error("Not yet implemented -- RED scaffold");
+  return {
+    error: "NO_NWAVE_STRUCTURE",
+    repoName,
+    configuredPath,
+    message: `Repo "${repoName}" at "${configuredPath}" does not contain nWave-structured documentation. Expected docs/feature/*, docs/product/architecture/*.md, or CLAUDE.md.`,
+  };
+}
+
+function buildQueryContextResults(
+  classified: ClassifyResult,
+  fileContents: Map<string, string>,
+): { results: QueryContextResultItem[]; toctouWarnings: string[] } {
+  const results: QueryContextResultItem[] = [];
+  const toctouWarnings: string[] = [];
+
+  for (const file of classified.filesToRead) {
+    const snippet = fileContents.get(file.sourceFile);
+    if (snippet === undefined) {
+      toctouWarnings.push(
+        `${file.sourceFile} could not be read (file may have been removed)`,
+      );
+      continue;
+    }
+    results.push({ sourceFile: file.sourceFile, phase: file.phase, snippet });
+  }
+
+  return { results, toctouWarnings };
 }
 
 export function formatQueryContextResponse(
   repoName: string,
   featureId: string,
+  configuredPath: string,
   classified: ClassifyResult,
   fileContents: Map<string, string>,
 ): QueryContextResponse | StructuredError {
-  throw new Error("Not yet implemented -- RED scaffold");
+  if (classified.outcome === "FEATURE_NOT_FOUND") {
+    return formatFeatureNotFound(repoName, featureId, classified.availableFeatures);
+  }
+
+  if (classified.outcome === "NO_NWAVE_STRUCTURE") {
+    return formatNoNwaveStructure(repoName, configuredPath);
+  }
+
+  const { results, toctouWarnings } = buildQueryContextResults(classified, fileContents);
+  const warnings = [...classified.warnings, ...toctouWarnings];
+
+  return {
+    repoName,
+    featureId,
+    results,
+    retrievedAt: new Date().toISOString(),
+    ...(warnings.length > 0 ? { warnings } : {}),
+  };
 }
 
 export function formatListFeaturesResponse(
@@ -111,5 +169,15 @@ export function formatListFeaturesResponse(
   docPath: string,
   classified: ListFeaturesResult,
 ): ListFeaturesResponse | StructuredError {
-  throw new Error("Not yet implemented -- RED scaffold");
+  if (classified.isNoNwaveStructure) {
+    return formatNoNwaveStructure(repoName, docPath);
+  }
+
+  return {
+    repoName,
+    docPath,
+    features: classified.features,
+    hasArchitectureAdrs: classified.hasArchitectureAdrs,
+    hasClaudeMd: classified.hasClaudeMd,
+  };
 }
