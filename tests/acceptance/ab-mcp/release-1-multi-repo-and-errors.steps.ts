@@ -270,29 +270,88 @@ describeFeature(
     // still be "called" (vitest-cucumber requires every scenario to be
     // referenced), so they are registered via Scenario.skip with no step
     // implementations.
-    Scenario.skip(
+    Scenario(
       "Agent queries a repo name that is not configured",
       ({ When, Then, And }) => {
-        When('the agent calls list_features for repo "repo-not-configured"', () => {});
-        Then('the response is an error "REPO_NOT_CONFIGURED"', () => {});
+        When(
+          'the agent calls list_features for repo "repo-not-configured"',
+          async () => {
+            const result = await handle!.client.callTool({
+              name: "list_features",
+              arguments: { repo_name: "repo-not-configured" },
+            });
+            firstResponse = parseToolJson(result as any);
+          },
+        );
+
+        Then('the response is an error "REPO_NOT_CONFIGURED"', () => {
+          expect(firstResponse.error).toBe("REPO_NOT_CONFIGURED");
+        });
+
         And(
           'the response\'s available repos include "ab-mcp", "repo-b", and "repo-c"',
-          () => {},
+          () => {
+            expect(firstResponse.available_repos).toEqual(
+              expect.arrayContaining(["ab-mcp", "repo-b", "repo-c"]),
+            );
+          },
         );
       },
     );
 
-    Scenario.skip(
+    Scenario(
       "Agent receives REPO_PATH_NOT_FOUND for a configured repo whose path moved",
       ({ Given, When, Then, And }) => {
-        Given('"repo-c" is configured with a doc path that does not exist on disk', () => {});
+        let movedRepoCDocPath: string;
+        let movedConfigDir: string;
+        let movedHandle: AbMcpHandle | undefined;
+
+        Given('"repo-c" is configured with a doc path that does not exist on disk', async () => {
+          movedRepoCDocPath = path.join(rootDir, "repo-c-moved", "docs");
+
+          movedConfigDir = mkdtempSync(
+            path.join(tmpdir(), "ab-mcp-multi-repo-moved-config-"),
+          );
+          const movedConfigPath = path.join(movedConfigDir, "ab-mcp.config.json");
+          writeFileSync(
+            movedConfigPath,
+            JSON.stringify([
+              { "repo-name": "ab-mcp", "doc-path": repoPath("docs") },
+              { "repo-name": "repo-b", "doc-path": repoBDocPath },
+              { "repo-name": "repo-c", "doc-path": movedRepoCDocPath },
+            ]),
+          );
+
+          movedHandle = await startAbMcp(movedConfigPath);
+        });
+
         When(
           'the agent calls query_context for repo "repo-c" and feature "anything"',
-          () => {},
+          async () => {
+            const result = await movedHandle!.client.callTool({
+              name: "query_context",
+              arguments: { repo_name: "repo-c", feature_id: "anything" },
+            });
+            firstResponse = parseToolJson(result as any);
+
+            await movedHandle!.close();
+            rmSync(movedConfigDir, { recursive: true, force: true });
+          },
         );
-        Then('the response is an error "REPO_PATH_NOT_FOUND"', () => {});
-        And("the response includes the configured path that was checked", () => {});
-        And("the response's available repos include the other 2 configured repos", () => {});
+
+        Then('the response is an error "REPO_PATH_NOT_FOUND"', () => {
+          expect(firstResponse.error).toBe("REPO_PATH_NOT_FOUND");
+        });
+
+        And("the response includes the configured path that was checked", () => {
+          expect(firstResponse.configured_path).toBe(movedRepoCDocPath);
+        });
+
+        And("the response's available repos include the other 2 configured repos", () => {
+          expect(firstResponse.available_repos).toEqual(
+            expect.arrayContaining(["ab-mcp", "repo-b"]),
+          );
+        });
       },
     );
 

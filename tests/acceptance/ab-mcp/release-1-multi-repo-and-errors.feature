@@ -44,13 +44,12 @@ Feature: Agent retrieves context across multiple configured repos, with structur
     And the two responses' doc paths differ, each matching that repo's
       configured path
 
-  @skip
   Scenario: Agent queries a repo name that is not configured
     When the agent calls list_features for repo "repo-not-configured"
     Then the response is an error "REPO_NOT_CONFIGURED"
     And the response's available repos include "ab-mcp", "repo-b", and "repo-c"
 
-  @skip @adapter-integration
+  @adapter-integration
   Scenario: Agent receives REPO_PATH_NOT_FOUND for a configured repo whose path moved
     Given "repo-c" is configured with a doc path that does not exist on disk
     When the agent calls query_context for repo "repo-c" and feature "anything"
