@@ -57,7 +57,6 @@ Feature: Agent retrieves context across multiple configured repos, with structur
     And the response includes the configured path that was checked
     And the response's available repos include the other 2 configured repos
 
-  @skip
   Scenario: Agent receives FEATURE_NOT_FOUND with accurate available features
     Given "repo-b" has a docs/feature/logging/ directory but no
       docs/feature/loggin/ directory
@@ -65,7 +64,7 @@ Feature: Agent retrieves context across multiple configured repos, with structur
     Then the response is an error "FEATURE_NOT_FOUND"
     And the response's available features include "logging"
 
-  @skip @adapter-integration
+  @adapter-integration
   Scenario: A permission-denied repo path never leaks a raw exception
     Given "repo-c" is configured with a doc path that exists but is not
       readable by the current user
