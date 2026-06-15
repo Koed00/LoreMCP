@@ -1,7 +1,6 @@
 // Pure core: classifies a repo's nWave document-tree snapshot against a
 // requested feature_id, per architecture brief.md Decision 4/5 precedence
-// rules. RED scaffold -- created by DISTILL (nw-distill).
-export const __SCAFFOLD__ = true;
+// rules.
 
 export type RepoEntry = {
   repoName: string;
@@ -41,11 +40,109 @@ export type ClassifyResult = {
   availableFeatures: string[];
 };
 
+function hasNoNwaveStructure(snapshot: TreeSnapshot): boolean {
+  return (
+    Object.keys(snapshot.features).length === 0 &&
+    snapshot.adrFiles.length === 0 &&
+    snapshot.claudeMdPath === null
+  );
+}
+
+function adrFilesToRead(snapshot: TreeSnapshot): FileToRead[] {
+  return [...snapshot.adrFiles]
+    .sort()
+    .map((sourceFile) => ({ sourceFile, phase: "architecture" }));
+}
+
+function claudeMdFileToRead(snapshot: TreeSnapshot): FileToRead[] {
+  return snapshot.claudeMdPath !== null
+    ? [{ sourceFile: snapshot.claudeMdPath, phase: "claude-md" }]
+    : [];
+}
+
+function featurePhaseFilesToRead(
+  snapshot: TreeSnapshot,
+  featureId: string,
+): FileToRead[] {
+  const phases = snapshot.features[featureId] ?? [];
+  return phases.map((phase) => ({
+    sourceFile: `docs/feature/${featureId}/${phase}/wave-decisions.md`,
+    phase,
+  }));
+}
+
+function buildPartialWarnings(snapshot: TreeSnapshot): string[] {
+  const warnings: string[] = [];
+
+  if (snapshot.adrFiles.length > 0) {
+    warnings.push(
+      "Repo has architecture ADRs but no feature-level wave-decisions.md for the requested feature.",
+    );
+  } else if (snapshot.claudeMdPath !== null) {
+    warnings.push(
+      "No feature-level or architecture-level documentation found; falling back to only CLAUDE.md-level context.",
+    );
+  }
+
+  return warnings;
+}
+
+function classifyFull(
+  snapshot: TreeSnapshot,
+  featureId: string,
+): ClassifyResult {
+  return {
+    outcome: "FULL",
+    filesToRead: [
+      ...featurePhaseFilesToRead(snapshot, featureId),
+      ...adrFilesToRead(snapshot),
+      ...claudeMdFileToRead(snapshot),
+    ],
+    warnings: [],
+    availableFeatures: Object.keys(snapshot.features),
+  };
+}
+
+function classifyPartial(snapshot: TreeSnapshot): ClassifyResult {
+  return {
+    outcome: "PARTIAL",
+    filesToRead: [...adrFilesToRead(snapshot), ...claudeMdFileToRead(snapshot)],
+    warnings: buildPartialWarnings(snapshot),
+    availableFeatures: Object.keys(snapshot.features),
+  };
+}
+
+function hasFallbackContext(snapshot: TreeSnapshot): boolean {
+  return snapshot.adrFiles.length > 0 || snapshot.claudeMdPath !== null;
+}
+
 export function classifyStructure(
   snapshot: TreeSnapshot,
   featureId: string,
 ): ClassifyResult {
-  throw new Error("Not yet implemented -- RED scaffold");
+  if (hasNoNwaveStructure(snapshot)) {
+    return {
+      outcome: "NO_NWAVE_STRUCTURE",
+      filesToRead: [],
+      warnings: [],
+      availableFeatures: [],
+    };
+  }
+
+  if (featureId in snapshot.features) {
+    return classifyFull(snapshot, featureId);
+  }
+
+  if (hasFallbackContext(snapshot)) {
+    return classifyPartial(snapshot);
+  }
+
+  return {
+    outcome: "FEATURE_NOT_FOUND",
+    filesToRead: [],
+    warnings: [],
+    availableFeatures: Object.keys(snapshot.features),
+  };
 }
 
 export type ListFeaturesResult = {
@@ -58,5 +155,22 @@ export type ListFeaturesResult = {
 export function classifyRepoForListFeatures(
   snapshot: TreeSnapshot,
 ): ListFeaturesResult {
-  throw new Error("Not yet implemented -- RED scaffold");
+  if (hasNoNwaveStructure(snapshot)) {
+    return {
+      features: [],
+      hasArchitectureAdrs: false,
+      hasClaudeMd: false,
+      isNoNwaveStructure: true,
+    };
+  }
+
+  return {
+    features: Object.entries(snapshot.features).map(([featureId, phases]) => ({
+      featureId,
+      phases,
+    })),
+    hasArchitectureAdrs: snapshot.adrFiles.length > 0,
+    hasClaudeMd: snapshot.claudeMdPath !== null,
+    isNoNwaveStructure: false,
+  };
 }
