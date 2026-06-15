@@ -1,19 +1,17 @@
 // Imperative shell: composition root / McpToolSurface port. Registers
 // list_features and query_context with @modelcontextprotocol/sdk and wires
-// shell adapters -> core -> shell formatter. This module is REAL wiring
-// (not a __SCAFFOLD__) -- it deliberately calls into scaffolded
-// config-loader / fs-doc-tree-reader / core modules, which throw
-// "Not yet implemented -- RED scaffold" at request time. The MCP SDK
-// catches handler errors and returns them as `isError: true` tool results,
-// so the server itself starts and stays up (RED, not BROKEN) -- per
-// nw-distill Mandate 7 and Driving Adapter Verification.
+// shell adapters -> core -> shell formatter.
+import * as path from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { loadConfig } from "./config-loader.js";
-import { createFsDocTreeReader } from "./fs-doc-tree-reader.js";
+import { createFsDocTreeReader, type DocTreeReader } from "./fs-doc-tree-reader.js";
 import {
   classifyStructure,
   classifyRepoForListFeatures,
+  type RepoEntry,
+  type TreeSnapshot,
+  type ClassifyResult,
 } from "../core/classify-structure.js";
 import {
   formatListFeaturesResponse,
@@ -25,6 +23,133 @@ import {
 export type CreateServerOptions = {
   configPath: string;
 };
+
+const ARCHITECTURE_DIR = "product/architecture";
+const FEATURE_DIR = "feature";
+const CLAUDE_MD_FILENAME = "CLAUDE.md";
+
+/**
+ * Builds a {@link TreeSnapshot} for `entry` by enumerating the real
+ * filesystem under `entry.docPath` (live, no cache -- ADR-004). All
+ * `TreeSnapshot` paths are relative to the repo root (the parent directory
+ * of `docPath`), matching the `docs/...` / `CLAUDE.md` conventions baked
+ * into classify-structure.ts.
+ */
+function buildTreeSnapshot(reader: DocTreeReader, entry: RepoEntry): TreeSnapshot {
+  const repoRoot = path.dirname(entry.docPath);
+  const docPathRelative = path.relative(repoRoot, entry.docPath);
+
+  return {
+    repoName: entry.repoName,
+    docPath: entry.docPath,
+    docPathExists: true,
+    features: discoverFeatures(reader, entry.docPath, docPathRelative),
+    adrFiles: discoverAdrFiles(reader, entry.docPath, docPathRelative),
+    claudeMdPath: discoverClaudeMdPath(reader, repoRoot),
+  };
+}
+
+/** Enumerates docs/feature/{featureId}/{phase}/ -> { featureId: [phases] }. */
+function discoverFeatures(
+  reader: DocTreeReader,
+  docPath: string,
+  docPathRelative: string,
+): Record<string, string[]> {
+  const featureRootAbsolute = path.join(docPath, FEATURE_DIR);
+  const featureIds = reader.listDir(featureRootAbsolute);
+
+  const features: Record<string, string[]> = {};
+  for (const featureId of featureIds) {
+    const featureDirAbsolute = path.join(featureRootAbsolute, featureId);
+    const phases = reader
+      .listDir(featureDirAbsolute)
+      .filter((entryName) => reader.pathExists(path.join(featureDirAbsolute, entryName)));
+    features[featureId] = phases;
+  }
+
+  return features;
+}
+
+/** Enumerates docs/product/architecture/*.md -> repo-root-relative paths, sorted. */
+function discoverAdrFiles(
+  reader: DocTreeReader,
+  docPath: string,
+  docPathRelative: string,
+): string[] {
+  const architectureDirAbsolute = path.join(docPath, ARCHITECTURE_DIR);
+  return reader
+    .listDir(architectureDirAbsolute)
+    .filter((fileName) => fileName.endsWith(".md"))
+    .map((fileName) => path.join(docPathRelative, ARCHITECTURE_DIR, fileName))
+    .sort();
+}
+
+/** Checks for <repoRoot>/CLAUDE.md (OQ-1: doc_path/../CLAUDE.md). */
+function discoverClaudeMdPath(reader: DocTreeReader, repoRoot: string): string | null {
+  const claudeMdAbsolute = path.join(repoRoot, CLAUDE_MD_FILENAME);
+  return reader.pathExists(claudeMdAbsolute) ? CLAUDE_MD_FILENAME : null;
+}
+
+/**
+ * Reads each file in `classified.filesToRead` via `reader.readFile`,
+ * resolving repo-root-relative `sourceFile` paths against `repoRoot`.
+ * Only successful reads are included -- TOCTOU failures are reported as
+ * warnings by formatQueryContextResponse.
+ */
+function readClassifiedFiles(
+  reader: DocTreeReader,
+  repoRoot: string,
+  classified: ClassifyResult,
+): Map<string, string> {
+  const fileContents = new Map<string, string>();
+
+  for (const file of classified.filesToRead) {
+    const absolutePath = path.join(repoRoot, file.sourceFile);
+    const outcome = reader.readFile(absolutePath);
+    if (outcome.ok) {
+      fileContents.set(file.sourceFile, outcome.content);
+    }
+  }
+
+  return fileContents;
+}
+
+/** Recursively converts camelCase object keys to snake_case for the MCP JSON contract. */
+function toSnakeCaseKeys(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(toSnakeCaseKeys);
+  }
+
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, fieldValue]) => [
+        camelToSnakeCase(key),
+        toSnakeCaseKeys(fieldValue),
+      ]),
+    );
+  }
+
+  return value;
+}
+
+function camelToSnakeCase(key: string): string {
+  return key.replace(/([A-Z])/g, "_$1").toLowerCase();
+}
+
+/**
+ * Marks a query_context success response's `retrievedAt` timestamp as a
+ * live (uncached) read (ADR-004: no caching).
+ */
+function withLiveRetrievedAt<T extends { retrievedAt?: string }>(result: T): T {
+  if (result.retrievedAt === undefined) {
+    return result;
+  }
+  return { ...result, retrievedAt: `live (uncached) read at ${result.retrievedAt}` };
+}
+
+function toToolResult(result: unknown) {
+  return { content: [{ type: "text" as const, text: JSON.stringify(toSnakeCaseKeys(result)) }] };
+}
 
 export function createServer(options: CreateServerOptions): McpServer {
   const server = new McpServer({
@@ -49,7 +174,7 @@ export function createServer(options: CreateServerOptions): McpServer {
           repo_name,
           repos.map((r) => r.repoName),
         );
-        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+        return toToolResult(result);
       }
 
       const probe = reader.probe(entry.docPath);
@@ -59,25 +184,13 @@ export function createServer(options: CreateServerOptions): McpServer {
           entry.docPath,
           repos.map((r) => r.repoName),
         );
-        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+        return toToolResult(result);
       }
 
-      // TODO (DELIVER): build TreeSnapshot via reader.listDir and pass to
-      // classifyRepoForListFeatures + formatListFeaturesResponse.
-      const classified = classifyRepoForListFeatures({
-        repoName: entry.repoName,
-        docPath: entry.docPath,
-        docPathExists: true,
-        features: {},
-        adrFiles: [],
-        claudeMdPath: null,
-      });
-      const result = formatListFeaturesResponse(
-        entry.repoName,
-        entry.docPath,
-        classified,
-      );
-      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+      const snapshot = buildTreeSnapshot(reader, entry);
+      const classified = classifyRepoForListFeatures(snapshot);
+      const result = formatListFeaturesResponse(entry.repoName, entry.docPath, classified);
+      return toToolResult(result);
     },
   );
 
@@ -96,7 +209,7 @@ export function createServer(options: CreateServerOptions): McpServer {
           repo_name,
           repos.map((r) => r.repoName),
         );
-        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+        return toToolResult(result);
       }
 
       const probe = reader.probe(entry.docPath);
@@ -106,31 +219,21 @@ export function createServer(options: CreateServerOptions): McpServer {
           entry.docPath,
           repos.map((r) => r.repoName),
         );
-        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+        return toToolResult(result);
       }
 
-      // TODO (DELIVER): build TreeSnapshot via reader.listDir, classify via
-      // classifyStructure, read matched files via reader.readFile, then
-      // formatQueryContextResponse.
-      const classified = classifyStructure(
-        {
-          repoName: entry.repoName,
-          docPath: entry.docPath,
-          docPathExists: true,
-          features: {},
-          adrFiles: [],
-          claudeMdPath: null,
-        },
-        feature_id,
-      );
+      const repoRoot = path.dirname(entry.docPath);
+      const snapshot = buildTreeSnapshot(reader, entry);
+      const classified = classifyStructure(snapshot, feature_id);
+      const fileContents = readClassifiedFiles(reader, repoRoot, classified);
       const result = formatQueryContextResponse(
         entry.repoName,
         feature_id,
         entry.docPath,
         classified,
-        new Map(),
+        fileContents,
       );
-      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+      return toToolResult(withLiveRetrievedAt(result as any));
     },
   );
 
