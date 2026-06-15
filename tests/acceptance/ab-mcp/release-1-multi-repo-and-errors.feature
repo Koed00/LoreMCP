@@ -16,7 +16,6 @@ Feature: Agent retrieves context across multiple configured repos, with structur
     And the ab-mcp MCP server is started as a subprocess over stdio with that
       configuration
 
-  @skip
   Scenario: Agent retrieves a feature's design decision from the second configured repo
     Given "repo-b" has a docs/feature/widgets/design/wave-decisions.md file
       containing the text "D-widget-shape: rounded corners"
@@ -25,7 +24,6 @@ Feature: Agent retrieves context across multiple configured repos, with structur
       "repo-b"'s configured doc path
     And that result's snippet contains "D-widget-shape: rounded corners"
 
-  @skip
   Scenario: Results from different repos do not cross-contaminate
     Given both "repo-b" and "repo-c" have a docs/feature/logging/ directory
       with different wave-decisions.md content
@@ -38,7 +36,6 @@ Feature: Agent retrieves context across multiple configured repos, with structur
       doc path
     And the two responses' snippets differ
 
-  @skip
   Scenario: list_features returns distinct feature lists per repo
     When the agent calls list_features for repo "ab-mcp"
     And the agent separately calls list_features for repo "repo-b"
