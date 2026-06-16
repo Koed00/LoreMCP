@@ -47,7 +47,6 @@ Feature: Agent receives the best available context, with warnings when structure
     Then the response is an error "NO_NWAVE_STRUCTURE"
     And the message explains that nWave-structured docs are required
 
-  @skip
   Scenario: list_features reports structure-completeness flags accurately
     When the agent calls list_features for repo "adrs-only-repo"
     Then the response includes has_architecture_adrs true
@@ -55,7 +54,6 @@ Feature: Agent receives the best available context, with warnings when structure
     Then the response includes has_architecture_adrs false
     And the response includes has_claude_md true
 
-  @skip
   Scenario: Full-structure repo returns no false-positive warnings
     Given "ab-mcp" has docs/feature/ab-mcp/discover/wave-decisions.md
     When the agent calls query_context for repo "ab-mcp" and feature "ab-mcp"

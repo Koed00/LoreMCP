@@ -63,8 +63,14 @@ function discoverFeatures(
     const featureDirAbsolute = path.join(featureRootAbsolute, featureId);
     const phases = reader
       .listDir(featureDirAbsolute)
-      .filter((entryName) => reader.pathExists(path.join(featureDirAbsolute, entryName)));
-    features[featureId] = phases;
+      .filter((entryName) =>
+        reader.pathExists(
+          path.join(featureDirAbsolute, entryName, "wave-decisions.md"),
+        ),
+      );
+    if (phases.length > 0) {
+      features[featureId] = phases;
+    }
   }
 
   return features;

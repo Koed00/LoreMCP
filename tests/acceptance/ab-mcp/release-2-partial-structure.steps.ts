@@ -288,29 +288,68 @@ describeFeature(
       },
     );
 
-    Scenario.skip(
+    Scenario(
       "list_features reports structure-completeness flags accurately",
       ({ When, Then, And }) => {
-        When('the agent calls list_features for repo "adrs-only-repo"', () => {});
-        Then("the response includes has_architecture_adrs true", () => {});
-        When('the agent calls list_features for repo "claude-md-only-repo"', () => {});
-        Then("the response includes has_architecture_adrs false", () => {});
-        And("the response includes has_claude_md true", () => {});
+        let adrsOnlyResponse: any;
+        let claudeMdOnlyResponse: any;
+
+        When('the agent calls list_features for repo "adrs-only-repo"', async () => {
+          const result = await handle!.client.callTool({
+            name: "list_features",
+            arguments: { repo_name: "adrs-only-repo" },
+          });
+          adrsOnlyResponse = parseToolJson(result as any);
+        });
+
+        Then("the response includes has_architecture_adrs true", () => {
+          expect(adrsOnlyResponse.has_architecture_adrs).toBe(true);
+        });
+
+        When('the agent calls list_features for repo "claude-md-only-repo"', async () => {
+          const result = await handle!.client.callTool({
+            name: "list_features",
+            arguments: { repo_name: "claude-md-only-repo" },
+          });
+          claudeMdOnlyResponse = parseToolJson(result as any);
+        });
+
+        Then("the response includes has_architecture_adrs false", () => {
+          expect(claudeMdOnlyResponse.has_architecture_adrs).toBe(false);
+        });
+
+        And("the response includes has_claude_md true", () => {
+          expect(claudeMdOnlyResponse.has_claude_md).toBe(true);
+        });
       },
     );
 
-    Scenario.skip(
+    Scenario(
       "Full-structure repo returns no false-positive warnings",
       ({ Given, When, Then }) => {
         Given(
           '"ab-mcp" has docs/feature/ab-mcp/discover/wave-decisions.md',
-          () => {},
+          () => {
+            // The BeforeEachScenario wires "ab-mcp" to repoPath("docs") which
+            // is the actual repository docs/ directory containing
+            // docs/feature/ab-mcp/discover/wave-decisions.md.
+          },
         );
+
         When(
           'the agent calls query_context for repo "ab-mcp" and feature "ab-mcp"',
-          () => {},
+          async () => {
+            const result = await handle!.client.callTool({
+              name: "query_context",
+              arguments: { repo_name: "ab-mcp", feature_id: "ab-mcp" },
+            });
+            response = parseToolJson(result as any);
+          },
         );
-        Then("the response includes no warnings entry", () => {});
+
+        Then("the response includes no warnings entry", () => {
+          expect(response.warnings).toBeUndefined();
+        });
       },
     );
   },
