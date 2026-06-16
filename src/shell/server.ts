@@ -177,7 +177,13 @@ export function createServer(options: CreateServerOptions): McpServer {
       inputSchema: { repo_name: z.string() },
     },
     async ({ repo_name }) => {
-      const repos = loadConfig(options.configPath);
+      let repos: RepoEntry[];
+      try {
+        repos = loadConfig(options.configPath);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return toToolResult({ error: "CONFIG_ERROR", message: msg });
+      }
       const lookup = resolveRepoEntry(repos, repo_name);
       if (!lookup.found) return lookup.toolResult;
 
@@ -201,7 +207,13 @@ export function createServer(options: CreateServerOptions): McpServer {
       inputSchema: { repo_name: z.string(), feature_id: z.string() },
     },
     async ({ repo_name, feature_id }) => {
-      const repos = loadConfig(options.configPath);
+      let repos: RepoEntry[];
+      try {
+        repos = loadConfig(options.configPath);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return toToolResult({ error: "CONFIG_ERROR", message: msg });
+      }
       const lookup = resolveRepoEntry(repos, repo_name);
       if (!lookup.found) return lookup.toolResult;
 
@@ -224,9 +236,9 @@ export function createServer(options: CreateServerOptions): McpServer {
       );
 
       const annotated =
-        "retrievedAt" in response
-          ? annotateWithLiveTimestamp(response as QueryContextResponse)
-          : response;
+        "error" in response
+          ? response
+          : annotateWithLiveTimestamp(response);
       return toToolResult(annotated);
     },
   );
