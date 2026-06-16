@@ -1,6 +1,3 @@
-// Pure core: shapes the 4 structured error responses + the success/partial
-// list_features/query_context response contracts (brief.md Section 8).
-
 import type {
   ClassifyResult,
   ListFeaturesResult,

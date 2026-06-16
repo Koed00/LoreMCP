@@ -1,7 +1,3 @@
-// Pure core: classifies a repo's nWave document-tree snapshot against a
-// requested feature_id, per architecture brief.md Decision 4/5 precedence
-// rules.
-
 export type RepoEntry = {
   repoName: string;
   docPath: string;

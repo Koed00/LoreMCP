@@ -1,6 +1,3 @@
-// Imperative shell: DocTreeReader port -- the ONLY module that imports
-// node:fs. Implements the probe() contract (brief.md Section 9, Principle
-// 12) and the live (no-cache) listDir/readFile/pathExists primitives.
 import * as fs from "node:fs";
 
 export type ProbeOutcome =

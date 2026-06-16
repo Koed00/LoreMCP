@@ -1,6 +1,3 @@
-// Imperative shell: composition root / McpToolSurface port. Registers
-// list_features and query_context with @modelcontextprotocol/sdk and wires
-// shell adapters -> core -> shell formatter.
 import * as path from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
@@ -18,6 +15,8 @@ import {
   formatQueryContextResponse,
   formatRepoNotConfigured,
   formatRepoPathNotFound,
+  type QueryContextResponse,
+  type StructuredError,
 } from "../core/format-response.js";
 
 export type CreateServerOptions = {
@@ -43,7 +42,7 @@ function buildTreeSnapshot(reader: DocTreeReader, entry: RepoEntry): TreeSnapsho
     repoName: entry.repoName,
     docPath: entry.docPath,
     docPathExists: true,
-    features: discoverFeatures(reader, entry.docPath, docPathRelative),
+    features: discoverFeatures(reader, entry.docPath),
     adrFiles: discoverAdrFiles(reader, entry.docPath, docPathRelative),
     claudeMdPath: discoverClaudeMdPath(reader, repoRoot),
   };
@@ -53,7 +52,6 @@ function buildTreeSnapshot(reader: DocTreeReader, entry: RepoEntry): TreeSnapsho
 function discoverFeatures(
   reader: DocTreeReader,
   docPath: string,
-  docPathRelative: string,
 ): Record<string, string[]> {
   const featureRootAbsolute = path.join(docPath, FEATURE_DIR);
   const featureIds = reader.listDir(featureRootAbsolute);
@@ -142,19 +140,25 @@ function camelToSnakeCase(key: string): string {
   return key.replace(/([A-Z])/g, "_$1").toLowerCase();
 }
 
-/**
- * Marks a query_context success response's `retrievedAt` timestamp as a
- * live (uncached) read (ADR-004: no caching).
- */
-function withLiveRetrievedAt<T extends { retrievedAt?: string }>(result: T): T {
-  if (result.retrievedAt === undefined) {
-    return result;
-  }
-  return { ...result, retrievedAt: `live (uncached) read at ${result.retrievedAt}` };
+function annotateWithLiveTimestamp(response: QueryContextResponse): QueryContextResponse {
+  return { ...response, retrievedAt: `live (uncached) read at ${response.retrievedAt}` };
 }
 
 function toToolResult(result: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(toSnakeCaseKeys(result)) }] };
+}
+
+type RepoLookupResult =
+  | { found: false; toolResult: ReturnType<typeof toToolResult> }
+  | { found: true; entry: RepoEntry; repoNames: string[] };
+
+function resolveRepoEntry(repos: RepoEntry[], repoName: string): RepoLookupResult {
+  const entry = repos.find((r) => r.repoName === repoName);
+  const repoNames = repos.map((r) => r.repoName);
+  if (!entry) {
+    return { found: false, toolResult: toToolResult(formatRepoNotConfigured(repoName, repoNames)) };
+  }
+  return { found: true, entry, repoNames };
 }
 
 export function createServer(options: CreateServerOptions): McpServer {
@@ -174,29 +178,18 @@ export function createServer(options: CreateServerOptions): McpServer {
     },
     async ({ repo_name }) => {
       const repos = loadConfig(options.configPath);
-      const entry = repos.find((r) => r.repoName === repo_name);
-      if (!entry) {
-        const result = formatRepoNotConfigured(
-          repo_name,
-          repos.map((r) => r.repoName),
-        );
-        return toToolResult(result);
-      }
+      const lookup = resolveRepoEntry(repos, repo_name);
+      if (!lookup.found) return lookup.toolResult;
 
+      const { entry, repoNames } = lookup;
       const probe = reader.probe(entry.docPath);
       if (!probe.ok) {
-        const result = formatRepoPathNotFound(
-          repo_name,
-          entry.docPath,
-          repos.map((r) => r.repoName),
-        );
-        return toToolResult(result);
+        return toToolResult(formatRepoPathNotFound(repo_name, entry.docPath, repoNames));
       }
 
       const snapshot = buildTreeSnapshot(reader, entry);
       const classified = classifyRepoForListFeatures(snapshot);
-      const result = formatListFeaturesResponse(entry.repoName, entry.docPath, classified);
-      return toToolResult(result);
+      return toToolResult(formatListFeaturesResponse(entry.repoName, entry.docPath, classified));
     },
   );
 
@@ -209,37 +202,32 @@ export function createServer(options: CreateServerOptions): McpServer {
     },
     async ({ repo_name, feature_id }) => {
       const repos = loadConfig(options.configPath);
-      const entry = repos.find((r) => r.repoName === repo_name);
-      if (!entry) {
-        const result = formatRepoNotConfigured(
-          repo_name,
-          repos.map((r) => r.repoName),
-        );
-        return toToolResult(result);
-      }
+      const lookup = resolveRepoEntry(repos, repo_name);
+      if (!lookup.found) return lookup.toolResult;
 
+      const { entry, repoNames } = lookup;
       const probe = reader.probe(entry.docPath);
       if (!probe.ok) {
-        const result = formatRepoPathNotFound(
-          repo_name,
-          entry.docPath,
-          repos.map((r) => r.repoName),
-        );
-        return toToolResult(result);
+        return toToolResult(formatRepoPathNotFound(repo_name, entry.docPath, repoNames));
       }
 
       const repoRoot = path.dirname(entry.docPath);
       const snapshot = buildTreeSnapshot(reader, entry);
       const classified = classifyStructure(snapshot, feature_id);
       const fileContents = readClassifiedFiles(reader, repoRoot, classified);
-      const result = formatQueryContextResponse(
+      const response = formatQueryContextResponse(
         entry.repoName,
         feature_id,
         entry.docPath,
         classified,
         fileContents,
       );
-      return toToolResult(withLiveRetrievedAt(result as any));
+
+      const annotated =
+        "retrievedAt" in response
+          ? annotateWithLiveTimestamp(response as QueryContextResponse)
+          : response;
+      return toToolResult(annotated);
     },
   );
 
