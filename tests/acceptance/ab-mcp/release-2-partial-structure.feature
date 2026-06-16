@@ -19,7 +19,6 @@ Feature: Agent receives the best available context, with warnings when structure
     And the ab-mcp MCP server is started as a subprocess over stdio with that
       configuration
 
-  @skip
   Scenario: Repo with ADRs but no feature-level decisions returns ADR content with a warning
     Given "adrs-only-repo" has docs/product/architecture/ADR-0012-policy-format.md
     And "adrs-only-repo" has no docs/feature/permission-policies/ directory
@@ -31,7 +30,6 @@ Feature: Agent receives the best available context, with warnings when structure
       wave-decisions.md"
     And the response is not an error
 
-  @skip
   Scenario: Repo with only a CLAUDE.md returns its content with a distinct warning
     Given "claude-md-only-repo" has only a CLAUDE.md file containing a section
       "## API Conventions"
@@ -42,7 +40,6 @@ Feature: Agent receives the best available context, with warnings when structure
     And the response includes a warning mentioning "only CLAUDE.md-level
       context"
 
-  @skip
   Scenario: Repo with zero nWave artifacts returns NO_NWAVE_STRUCTURE
     Given "no-structure-repo" contains only a README.md and a manuals/ folder
     When the agent calls query_context for repo "no-structure-repo" and
