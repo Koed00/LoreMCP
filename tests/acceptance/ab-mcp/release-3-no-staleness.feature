@@ -22,7 +22,7 @@ Feature: query_context always reflects the current on-disk state, never a stale 
     And the ab-mcp MCP server is started as a subprocess over stdio with that
       configuration
 
-  @skip @adapter-integration
+  @adapter-integration
   Scenario: An edit to a source repo's doc file is reflected in the very next query
     Given "ab-mcp"'s docs/feature/ab-mcp/discover/wave-decisions.md does not
       contain the line "TEMP-VERIFY-LIVE-READ"
