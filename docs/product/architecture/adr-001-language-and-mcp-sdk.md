@@ -5,7 +5,7 @@ Proposed (Recommendation pending stakeholder confirmation -- Propose-mode DESIGN
 
 ## Context
 
-ab-mcp is a local, read-only MCP server consumed by AI coding agents (primarily Claude Code) via stdio. It needs:
+LoreMCP is a local, read-only MCP server consumed by AI coding agents (primarily Claude Code) via stdio. It needs:
 - An official/well-supported MCP SDK
 - Easy distribution to a solo OSS maintainer's own repos and any future community users (low-friction install via Claude Code MCP config)
 - Strong testability for error/warning paths (KPI-4/KPI-5 require near-exhaustive coverage of 4 structured error shapes and 2 warning types across multiple completeness levels)
@@ -15,7 +15,7 @@ Constraints: solo maintainer, OSS (MIT-preferred), no CI yet, ~4-6 days total ef
 
 ## Decision
 
-Use **TypeScript (5.x) on Node.js LTS (>=20)** with the **official `@modelcontextprotocol/sdk`** (MIT license), distributed as an npm package with a `bin` entry runnable via `npx ab-mcp`.
+Use **TypeScript (5.x) on Node.js LTS (>=20)** with the **official `@modelcontextprotocol/sdk`** (MIT license), distributed as an npm package with a `bin` entry runnable via `npx lore-mcp`.
 
 ## Alternatives Considered
 
@@ -32,7 +32,7 @@ Use **TypeScript (5.x) on Node.js LTS (>=20)** with the **official `@modelcontex
 ## Consequences
 
 ### Positive
-- `npx ab-mcp` (or equivalent) gives near-zero-friction installation matching common MCP server distribution conventions
+- `npx lore-mcp` (or equivalent) gives near-zero-friction installation matching common MCP server distribution conventions
 - TypeScript types for `RepoEntry`, `QueryContextResult`, `ErrorResponse` (4 variants) give compile-time safety for the response contracts that KPI-4/5 test exhaustively
 - `@modelcontextprotocol/sdk` is the official, actively maintained SDK -- lowest risk of API churn relative to community alternatives
 

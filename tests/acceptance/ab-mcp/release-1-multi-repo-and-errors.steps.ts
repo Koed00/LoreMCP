@@ -92,7 +92,7 @@ describeFeature(
       );
 
       configDir = mkdtempSync(path.join(tmpdir(), "ab-mcp-multi-repo-config-"));
-      configPath = path.join(configDir, "ab-mcp.config.json");
+      configPath = path.join(configDir, "lore-mcp.config.json");
       writeFileSync(
         configPath,
         JSON.stringify([
@@ -319,7 +319,7 @@ describeFeature(
           movedConfigDir = mkdtempSync(
             path.join(tmpdir(), "ab-mcp-multi-repo-moved-config-"),
           );
-          const movedConfigPath = path.join(movedConfigDir, "ab-mcp.config.json");
+          const movedConfigPath = path.join(movedConfigDir, "lore-mcp.config.json");
           writeFileSync(
             movedConfigPath,
             JSON.stringify([
@@ -418,7 +418,7 @@ describeFeature(
             );
             const permissionDeniedConfigPath = path.join(
               permissionDeniedConfigDir,
-              "ab-mcp.config.json",
+              "lore-mcp.config.json",
             );
             writeFileSync(
               permissionDeniedConfigPath,

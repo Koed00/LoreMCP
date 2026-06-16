@@ -1,11 +1,11 @@
 {
-  "name": "ab-mcp",
+  "name": "lore-mcp",
   "version": "0.1.0",
   "description": "Local, read-only MCP server giving AI coding agents live access to nWave-structured documentation in configured sibling repos.",
   "type": "module",
   "license": "MIT",
   "bin": {
-    "ab-mcp": "dist/index.js"
+    "lore-mcp": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",

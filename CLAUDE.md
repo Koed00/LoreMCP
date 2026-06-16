@@ -4,7 +4,7 @@ Crafter guidance for AI agents working in this repository.
 
 ## Project
 
-ab-mcp is a local, read-only MCP server that gives an AI coding agent live access
+LoreMCP is a local, read-only MCP server that gives an AI coding agent live access
 to nWave-structured documentation (`wave-decisions.md`/`feature-delta.md`, ADRs,
 `CLAUDE.md`) from a configured list of sibling repos. See
 `docs/product/architecture/brief.md` for the full architecture and

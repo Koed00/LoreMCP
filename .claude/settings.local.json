@@ -8,7 +8,12 @@
       "Bash(npx vitest *)",
       "Bash(cat)",
       "Bash(npx tsx *)",
-      "Bash(cp /tmp/check-parse.mjs ./check-parse.mjs && npx tsx ./check-parse.mjs; rm ./check-parse.mjs)"
+      "Bash(cp /tmp/check-parse.mjs ./check-parse.mjs && npx tsx ./check-parse.mjs; rm ./check-parse.mjs)",
+      "Bash(sed -i '' 's/\"name\": \"ab-mcp\"/\"name\": \"lore-mcp\"/' package.json)",
+      "Bash(sed -i '' 's/\"ab-mcp\": \"dist\\\\/index.js\"/\"lore-mcp\": \"dist\\\\/index.js\"/' package.json)",
+      "Bash(sed -i '' 's/AB_MCP_CONFIG/LORE_MCP_CONFIG/g' src/index.ts)",
+      "Bash(sed -i '' 's/ab-mcp\\\\.config\\\\.json/lore-mcp.config.json/g' src/index.ts)",
+      "Bash(sed -i '' 's/name: \"ab-mcp\"/name: \"lore-mcp\"/' src/shell/server.ts)"
     ]
   }
 }

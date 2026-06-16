@@ -23,7 +23,7 @@ describe("loadConfig", () => {
 
   it("returns RepoEntry[] with camelCase fields for a valid config file", () => {
     const configPath = writeConfigFile(
-      "ab-mcp.config.json",
+      "lore-mcp.config.json",
       JSON.stringify([
         { "repo-name": "ab-mcp", "doc-path": "/abs/path/to/AB-MCP/docs" },
         { "repo-name": "other-repo", "doc-path": "/abs/path/to/other/docs" },
@@ -50,7 +50,7 @@ describe("loadConfig", () => {
 
   it("throws a clear error when the config file contains malformed JSON", () => {
     const configPath = writeConfigFile(
-      "ab-mcp.config.json",
+      "lore-mcp.config.json",
       "{ this is not valid json ",
     );
 
@@ -59,7 +59,7 @@ describe("loadConfig", () => {
 
   it("throws a clear error when the config is not an array", () => {
     const configPath = writeConfigFile(
-      "ab-mcp.config.json",
+      "lore-mcp.config.json",
       JSON.stringify({ "repo-name": "ab-mcp", "doc-path": "/some/path" }),
     );
 
@@ -68,7 +68,7 @@ describe("loadConfig", () => {
 
   it("throws a clear error when an entry is missing repo-name", () => {
     const configPath = writeConfigFile(
-      "ab-mcp.config.json",
+      "lore-mcp.config.json",
       JSON.stringify([{ "doc-path": "/abs/path/to/AB-MCP/docs" }]),
     );
 
@@ -77,7 +77,7 @@ describe("loadConfig", () => {
 
   it("throws a clear error when an entry is missing doc-path", () => {
     const configPath = writeConfigFile(
-      "ab-mcp.config.json",
+      "lore-mcp.config.json",
       JSON.stringify([{ "repo-name": "ab-mcp" }]),
     );
 
@@ -86,7 +86,7 @@ describe("loadConfig", () => {
 
   it("throws a clear error when an entry has wrong types for repo-name or doc-path", () => {
     const configPath = writeConfigFile(
-      "ab-mcp.config.json",
+      "lore-mcp.config.json",
       JSON.stringify([{ "repo-name": 123, "doc-path": true }]),
     );
 
@@ -95,7 +95,7 @@ describe("loadConfig", () => {
 
   it("throws a clear error when repo-name or doc-path is an empty string", () => {
     const configPath = writeConfigFile(
-      "ab-mcp.config.json",
+      "lore-mcp.config.json",
       JSON.stringify([{ "repo-name": "", "doc-path": "" }]),
     );
 

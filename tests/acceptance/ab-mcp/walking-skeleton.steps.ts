@@ -41,7 +41,7 @@ describeFeature(
 
     BeforeEachScenario(async () => {
       configDir = mkdtempSync(path.join(tmpdir(), "ab-mcp-ws-"));
-      configPath = path.join(configDir, "ab-mcp.config.json");
+      configPath = path.join(configDir, "lore-mcp.config.json");
       writeFileSync(
         configPath,
         JSON.stringify([

@@ -1,4 +1,4 @@
-// Imperative shell: ConfigSource port. Reads ab-mcp.config.json (live, no
+// Imperative shell: ConfigSource port. Reads lore-mcp.config.json (live, no
 // cache) and validates its shape.
 import { readFileSync } from "node:fs";
 
@@ -14,7 +14,7 @@ type RawConfigEntry = {
 };
 
 /**
- * Loads {@link RepoEntry} list from `configPath` (ab-mcp.config.json).
+ * Loads {@link RepoEntry} list from `configPath` (lore-mcp.config.json).
  * Throws if the file is missing or malformed -- the composition root
  * (server.ts) treats that as a `health.startup.refused` condition for the
  * whole process (brief.md Section 9, composition-root invariant).
@@ -30,7 +30,7 @@ function readConfigFile(configPath: string): string {
     return readFileSync(configPath, "utf-8");
   } catch (error) {
     throw new Error(
-      `Failed to read ab-mcp config file at "${configPath}": ${describeError(error)}`,
+      `Failed to read lore-mcp config file at "${configPath}": ${describeError(error)}`,
     );
   }
 }
@@ -40,7 +40,7 @@ function parseConfigJson(fileContents: string, configPath: string): unknown {
     return JSON.parse(fileContents);
   } catch (error) {
     throw new Error(
-      `Failed to parse ab-mcp config file at "${configPath}" as JSON: ${describeError(error)}`,
+      `Failed to parse lore-mcp config file at "${configPath}" as JSON: ${describeError(error)}`,
     );
   }
 }
@@ -48,7 +48,7 @@ function parseConfigJson(fileContents: string, configPath: string): unknown {
 function toRepoEntries(parsedJson: unknown, configPath: string): RepoEntry[] {
   if (!Array.isArray(parsedJson)) {
     throw new Error(
-      `Invalid ab-mcp config file at "${configPath}": expected a JSON array of repo entries, got ${typeof parsedJson}`,
+      `Invalid lore-mcp config file at "${configPath}": expected a JSON array of repo entries, got ${typeof parsedJson}`,
     );
   }
 
@@ -64,7 +64,7 @@ function toRepoEntry(
 ): RepoEntry {
   if (typeof entry !== "object" || entry === null) {
     throw new Error(
-      `Invalid ab-mcp config file at "${configPath}": entry at index ${index} must be an object`,
+      `Invalid lore-mcp config file at "${configPath}": entry at index ${index} must be an object`,
     );
   }
 
@@ -93,7 +93,7 @@ function requireNonEmptyString(
 ): string {
   if (typeof value !== "string" || value.length === 0) {
     throw new Error(
-      `Invalid ab-mcp config file at "${configPath}": entry at index ${index} must have a non-empty string "${fieldName}"`,
+      `Invalid lore-mcp config file at "${configPath}": entry at index ${index} must have a non-empty string "${fieldName}"`,
     );
   }
   return value;

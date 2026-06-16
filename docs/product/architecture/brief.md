@@ -11,7 +11,7 @@
 
 ### 1. System Context and Capabilities
 
-ab-mcp is a **local, read-only MCP (Model Context Protocol) server** that gives an AI coding agent (e.g., Claude Code), operating in "Repo A", live read access to nWave-structured documentation (`wave-decisions.md`/`feature-delta.md`, ADRs under `docs/product/architecture/`, `CLAUDE.md`) in a configured list of sibling repos ("Repo B/C/D...").
+LoreMCP is a **local, read-only MCP (Model Context Protocol) server** that gives an AI coding agent (e.g., Claude Code), operating in "Repo A", live read access to nWave-structured documentation (`wave-decisions.md`/`feature-delta.md`, ADRs under `docs/product/architecture/`, `CLAUDE.md`) in a configured list of sibling repos ("Repo B/C/D...").
 
 Capabilities (from US-01..US-05):
 - `list_features(repo_name)` -- enumerate `docs/feature/*/` and phase subdirectories for a configured repo, plus `has_architecture_adrs`/`has_claude_md` flags.
@@ -79,7 +79,7 @@ Out of scope (confirmed, do not build): ownership/boundary mapping, CLAUDE.md au
 
 #### Decision 3 -- Config File Format
 
-**RECOMMENDATION: JSON** (`ab-mcp.config.json`)
+**RECOMMENDATION: JSON** (`lore-mcp.config.json`)
 
 | Option | Pros | Cons |
 |---|---|---|
@@ -157,10 +157,10 @@ For `query_context`, the precedence for the 4 outcomes (`FEATURE_NOT_FOUND` vs `
 
 ```mermaid
 C4Context
-  title System Context -- ab-mcp
+  title System Context -- LoreMCP
 
   Person(agent, "AI Coding Agent", "Claude Code, operating in Repo A on behalf of the developer")
-  System(abmcp, "ab-mcp", "Local MCP server: list_features / query_context")
+  System(abmcp, "lore-mcp", "Local MCP server: list_features / query_context")
   System_Ext(repoA, "Repo A filesystem", "The repo the agent is currently working in (may itself be configured)")
   System_Ext(repoB, "Repo B...N filesystems", "Sibling repos configured in ab-mcp's config: docs/feature/**, docs/product/architecture/, CLAUDE.md")
 
@@ -173,19 +173,19 @@ C4Context
 
 ```mermaid
 C4Container
-  title Container Diagram -- ab-mcp
+  title Container Diagram -- LoreMCP
 
   Person(agent, "AI Coding Agent", "Claude Code")
 
-  Container_Boundary(abmcp, "ab-mcp (single Node.js process)") {
+  Container_Boundary(abmcp, "lore-mcp (single Node.js process)") {
     Container(mcpserver, "MCP Tool Layer", "TypeScript, @modelcontextprotocol/sdk", "Exposes list_features/query_context over stdio; validates inputs; maps domain results to MCP responses")
-    Container(configloader, "Config Loader", "TypeScript (pure)", "Loads + validates ab-mcp.config.json into {repo-name, doc-path}[] ; resolves repo_name -> doc_path")
+    Container(configloader, "Config Loader", "TypeScript (pure)", "Loads + validates lore-mcp.config.json into {repo-name, doc-path}[] ; resolves repo_name -> doc_path")
     Container(docscanner, "Doc-Tree Scanner", "TypeScript, fs (imperative shell)", "Lists docs/feature/*/<phase>/, docs/product/architecture/*.md, CLAUDE.md presence -- live, no cache")
     Container(extractor, "Content Extractor", "TypeScript (pure core + thin fs read)", "Applies Decision 4 rules: selects files, reads content, applies size-cap/truncation, classifies completeness")
     Container(formatter, "Response Formatter", "TypeScript (pure)", "Shapes results/errors/warnings into the 4 documented response contracts")
   }
 
-  ContainerDb(configfile, "ab-mcp.config.json", "JSON file", "List of {repo-name, doc-path} entries -- read at startup and on each call (no cache, supports live edits)")
+  ContainerDb(configfile, "lore-mcp.config.json", "JSON file", "List of {repo-name, doc-path} entries -- read at startup and on each call (no cache, supports live edits)")
   ContainerDb(repodocs, "Configured repos' docs/", "Filesystem", "wave-decisions.md/feature-delta.md, ADRs, CLAUDE.md per repo")
 
   Rel(agent, mcpserver, "Calls list_features(repo_name) / query_context(repo_name, feature_id) via MCP/stdio")
@@ -210,7 +210,7 @@ L3 (Component) diagram omitted -- 5 containers within a single process is below 
 This is NOT "Hexagonal Architecture" as a heavyweight pattern with multiple adapter implementations -- there is exactly ONE adapter per port (real filesystem, real MCP transport), and no swapping is anticipated in production. The pattern is applied ONLY to the extent it serves testability:
 
 - **Ports** (interfaces, minimal):
-  - `ConfigSource` -- `loadConfig(): RepoEntry[]` (reads `ab-mcp.config.json`)
+  - `ConfigSource` -- `loadConfig(): RepoEntry[]` (reads `lore-mcp.config.json`)
   - `DocTreeReader` -- `listDir(path): string[]`, `readFile(path): string`, `pathExists(path): boolean` (wraps `node:fs`)
   - `McpToolSurface` -- the two tool handlers registered with `@modelcontextprotocol/sdk`
 
@@ -245,7 +245,7 @@ This is NOT "Hexagonal Architecture" as a heavyweight pattern with multiple adap
 | Language | TypeScript 5.x | Apache 2.0 | Decision 1 |
 | Runtime | Node.js (LTS, >=20) | MIT | Required by `@modelcontextprotocol/sdk`; `npx`-distributable |
 | MCP SDK | `@modelcontextprotocol/sdk` | MIT | Official Anthropic SDK, actively maintained |
-| Config format | JSON (`ab-mcp.config.json`) | N/A (no library; native `JSON.parse`) | Decision 3 |
+| Config format | JSON (`lore-mcp.config.json`) | N/A (no library; native `JSON.parse`) | Decision 3 |
 | Config validation | Hand-written type guard, OR `zod` if validation complexity grows | MIT (zod) | Start with hand-written guard (zero deps); escalate to `zod` only if validation logic exceeds ~20 lines |
 | Filesystem access | `node:fs/promises` (built-in) | N/A | No external dependency needed |
 | Architecture boundary enforcement | `dependency-cruiser` | MIT | Section 6 |
@@ -288,9 +288,9 @@ Per Principle 12, the `DocTreeReader` adapter (the one shell module that touches
   5. **Symlink escaping the configured `doc_path` root** -> followed and read normally for MVP (read-only, no write risk) but documented as a known non-goal for sandboxing; NOT a probe failure, just documented behavior
   6. **Case-insensitive filesystem (macOS/Windows) causing `docs/Feature/` vs `docs/feature/` ambiguity** -> probe scenario: directory listing comparison MUST be done via exact `readdir` results (not assumed-case path construction), so this is naturally handled IF the scanner always lists-then-matches rather than constructing-then-checking paths blindly. Documented as a probe scenario for the integration test suite (fixture with mixed-case directory name on a case-sensitive CI runner vs local macOS).
 
-- **Composition-root invariant ("wire then probe then use")**: At startup, ab-mcp loads `ab-mcp.config.json`, then for EACH configured entry calls `probe(doc_path)`. If a probe fails for an entry, the server does NOT refuse to start entirely (unlike a typical "refuse to start" invariant) -- because a stale entry for repo X must not block querying repo Y (US-03's whole point is graceful per-repo degradation). Instead:
+- **Composition-root invariant ("wire then probe then use")**: At startup, ab-mcp loads `lore-mcp.config.json`, then for EACH configured entry calls `probe(doc_path)`. If a probe fails for an entry, the server does NOT refuse to start entirely (unlike a typical "refuse to start" invariant) -- because a stale entry for repo X must not block querying repo Y (US-03's whole point is graceful per-repo degradation). Instead:
   - Startup logs a structured `health.startup.refused` event PER FAILING ENTRY (e.g., `{event: "health.startup.refused", repo_name, configured_path, reason: "REPO_PATH_NOT_FOUND"}`) to stderr (visible in Claude Code's MCP server logs) -- this is the adapted form of the "refuse to start" invariant for a multi-entry config: each entry is independently wired-then-probed, and a failing entry is marked degraded (subsequent queries against it return `REPO_PATH_NOT_FOUND` immediately without re-attempting fs access unnecessarily -- though since "no cache" applies, the PER-CALL probe in point 3 above is still the source of truth; the startup probe is purely an early-warning log, not a gate).
-  - The server as a whole DOES start (both tools registered) as long as `ab-mcp.config.json` itself is valid JSON matching the expected shape -- if the config file itself is missing/malformed, THIS is a true `health.startup.refused` for the whole process (cannot serve any tool meaningfully), and the process exits non-zero with that structured event on stderr.
+  - The server as a whole DOES start (both tools registered) as long as `lore-mcp.config.json` itself is valid JSON matching the expected shape -- if the config file itself is missing/malformed, THIS is a true `health.startup.refused` for the whole process (cannot serve any tool meaningfully), and the process exits non-zero with that structured event on stderr.
 
 - **Three-layer enforcement of the probe contract**:
   1. **Subtype check (compile-time)**: `DocTreeReader` is defined as a TS `interface` (or branded type) with `probe`, `listDir`, `readFile`, `pathExists` methods. The composition root's wiring function has a parameter typed as `DocTreeReader` -- `tsc` rejects any adapter object missing `probe`.

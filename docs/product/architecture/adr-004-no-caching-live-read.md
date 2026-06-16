@@ -11,10 +11,10 @@ System Constraints (discuss/user-stories.md): "No caching: every `query_context`
 
 ## Decision
 
-ab-mcp introduces **NO caching layer of any kind** -- no in-memory cache, no on-disk cache, no memoization across calls, for: config file content, directory listings, or file content.
+LoreMCP introduces **NO caching layer of any kind** -- no in-memory cache, no on-disk cache, no memoization across calls, for: config file content, directory listings, or file content.
 
 Every `list_features`/`query_context` call:
-1. Re-reads `ab-mcp.config.json` from disk
+1. Re-reads `lore-mcp.config.json` from disk
 2. Re-runs directory enumeration (`docs/feature/*/`, `docs/product/architecture/*.md`, `CLAUDE.md` existence checks)
 3. Re-reads any matched file's full content
 

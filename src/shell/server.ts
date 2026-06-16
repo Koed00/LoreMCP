@@ -163,7 +163,7 @@ function resolveRepoEntry(repos: RepoEntry[], repoName: string): RepoLookupResul
 
 export function createServer(options: CreateServerOptions): McpServer {
   const server = new McpServer({
-    name: "ab-mcp",
+    name: "lore-mcp",
     version: "0.1.0",
   });
 

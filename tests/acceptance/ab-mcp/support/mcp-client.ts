@@ -20,7 +20,7 @@ export type AbMcpHandle = {
 
 /**
  * Starts `node --import tsx src/index.ts` (the real bin entry) with
- * `AB_MCP_CONFIG` pointing at `configPath`, and connects an MCP client to it
+ * `LORE_MCP_CONFIG` pointing at `configPath`, and connects an MCP client to it
  * over stdio.
  */
 export async function startAbMcp(configPath: string): Promise<AbMcpHandle> {
@@ -29,11 +29,11 @@ export async function startAbMcp(configPath: string): Promise<AbMcpHandle> {
     args: ["--import", "tsx", path.join(repoRoot, "src/index.ts")],
     env: {
       ...process.env,
-      AB_MCP_CONFIG: configPath,
+      LORE_MCP_CONFIG: configPath,
     },
   });
 
-  const client = new Client({ name: "ab-mcp-acceptance-tests", version: "0.1.0" });
+  const client = new Client({ name: "lore-mcp-acceptance-tests", version: "0.1.0" });
   await client.connect(transport);
 
   return {

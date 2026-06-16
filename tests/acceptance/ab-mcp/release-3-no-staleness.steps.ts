@@ -69,7 +69,7 @@ describeFeature(
       configDir = mkdtempSync(
         path.join(tmpdir(), "ab-mcp-no-staleness-config-"),
       );
-      configPath = path.join(configDir, "ab-mcp.config.json");
+      configPath = path.join(configDir, "lore-mcp.config.json");
       writeFileSync(
         configPath,
         JSON.stringify([

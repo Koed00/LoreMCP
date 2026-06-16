@@ -5,11 +5,11 @@ Proposed (Recommendation pending stakeholder confirmation -- Propose-mode DESIGN
 
 ## Context
 
-ab-mcp requires a configuration file holding a list of `{repo-name, doc-path}` entries (D-config/H4: 3 baseline entries, must scale to 10+ via appending entries only, no schema changes). The config is hand-edited by the solo maintainer (Maria) when adding/removing sibling repos.
+LoreMCP requires a configuration file holding a list of `{repo-name, doc-path}` entries (D-config/H4: 3 baseline entries, must scale to 10+ via appending entries only, no schema changes). The config is hand-edited by the solo maintainer (Maria) when adding/removing sibling repos.
 
 ## Decision
 
-Use **JSON** for the configuration file (`ab-mcp.config.json`), parsed via Node's native `JSON.parse`, validated with a small hand-written type guard (escalate to `zod` only if validation logic grows beyond ~20 lines).
+Use **JSON** for the configuration file (`lore-mcp.config.json`), parsed via Node's native `JSON.parse`, validated with a small hand-written type guard (escalate to `zod` only if validation logic grows beyond ~20 lines).
 
 Example shape:
 ```json

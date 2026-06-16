@@ -68,7 +68,7 @@ export function formatRepoNotConfigured(
   return {
     error: "REPO_NOT_CONFIGURED",
     repoName,
-    message: `Repo "${repoName}" is not configured in ab-mcp.config.json.`,
+    message: `Repo "${repoName}" is not configured in lore-mcp.config.json.`,
     availableRepos,
   };
 }

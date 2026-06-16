@@ -2,7 +2,7 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createServer } from "./shell/server.js";
 
-const configPath = process.env.AB_MCP_CONFIG ?? "ab-mcp.config.json";
+const configPath = process.env.LORE_MCP_CONFIG ?? "lore-mcp.config.json";
 
 try {
   const server = createServer({ configPath });
