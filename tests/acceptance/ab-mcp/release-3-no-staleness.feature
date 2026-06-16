@@ -33,7 +33,7 @@ Feature: query_context always reflects the current on-disk state, never a stale 
       "ab-mcp", with no server restart
     Then the response's snippet contains "TEMP-VERIFY-LIVE-READ"
 
-  @skip
+  @adapter-integration
   Scenario: retrieved_at marker is present on every response, even with unchanged content
     When the agent calls query_context for repo "ab-mcp" and feature "ab-mcp"
       twice in a row with no file changes in between
@@ -41,7 +41,7 @@ Feature: query_context always reflects the current on-disk state, never a stale 
       uncached read
     And the snippet content is identical between the two responses
 
-  @skip
+  @adapter-integration
   Scenario: Successive queries each reflect the latest on-disk state
     When the agent calls query_context for repo "ab-mcp" and feature "ab-mcp"
       (call 1)

@@ -156,46 +156,95 @@ describeFeature(
       },
     );
 
-    // Scenarios 2 and 3 belong to step 04-02. They are registered via
-    // Scenario.skip so vitest-cucumber does not complain about unregistered
-    // scenarios. Step bodies are no-op placeholders.
-    Scenario.skip(
+    Scenario(
       "retrieved_at marker is present on every response, even with unchanged content",
       ({ When, Then, And }) => {
         When(
           "the agent calls query_context for repo \"ab-mcp\" and feature \"ab-mcp\"",
-          () => {},
+          async () => {
+            const result1 = await handle!.client.callTool({
+              name: "query_context",
+              arguments: { repo_name: "ab-mcp", feature_id: "ab-mcp" },
+            });
+            firstResponse = parseToolJson(result1 as any);
+
+            const result2 = await handle!.client.callTool({
+              name: "query_context",
+              arguments: { repo_name: "ab-mcp", feature_id: "ab-mcp" },
+            });
+            secondResponse = parseToolJson(result2 as any);
+          },
         );
         Then(
           "both responses include a retrieved_at field indicating a live,",
-          () => {},
+          () => {
+            expect(firstResponse.retrieved_at).toBeDefined();
+            expect(firstResponse.retrieved_at).toContain("live (uncached) read at");
+            expect(secondResponse.retrieved_at).toBeDefined();
+            expect(secondResponse.retrieved_at).toContain("live (uncached) read at");
+          },
         );
-        And("the snippet content is identical between the two responses", () => {});
+        And("the snippet content is identical between the two responses", () => {
+          const snippets1 = (firstResponse.results ?? [])
+            .map((r: any) => r.snippet ?? "")
+            .join("\n");
+          const snippets2 = (secondResponse.results ?? [])
+            .map((r: any) => r.snippet ?? "")
+            .join("\n");
+          expect(snippets1).toEqual(snippets2);
+        });
       },
     );
 
-    Scenario.skip(
+    Scenario(
       "Successive queries each reflect the latest on-disk state",
       ({ When, And, Then }) => {
+        let firstSnippets: string;
+        let secondSnippets: string;
+
         When(
           "the agent calls query_context for repo \"ab-mcp\" and feature \"ab-mcp\"",
-          () => {},
+          async () => {
+            const result = await handle!.client.callTool({
+              name: "query_context",
+              arguments: { repo_name: "ab-mcp", feature_id: "ab-mcp" },
+            });
+            firstResponse = parseToolJson(result as any);
+            firstSnippets = (firstResponse.results ?? [])
+              .map((r: any) => r.snippet ?? "")
+              .join("\n");
+          },
         );
         And(
           "the line \"D-temp: temporary verification line\" is appended to",
-          () => {},
+          () => {
+            appendFileSync(waveDecisionsFixturePath, "\nD-temp: temporary verification line\n");
+          },
         );
         And(
           "the agent calls query_context again for repo \"ab-mcp\" and feature",
-          () => {},
+          async () => {
+            const result = await handle!.client.callTool({
+              name: "query_context",
+              arguments: { repo_name: "ab-mcp", feature_id: "ab-mcp" },
+            });
+            secondResponse = parseToolJson(result as any);
+            secondSnippets = (secondResponse.results ?? [])
+              .map((r: any) => r.snippet ?? "")
+              .join("\n");
+          },
         );
         Then(
           "call 1's snippet does not contain \"D-temp: temporary verification line\"",
-          () => {},
+          () => {
+            expect(firstSnippets).not.toContain("D-temp: temporary verification line");
+          },
         );
         And(
           "call 2's snippet contains \"D-temp: temporary verification line\"",
-          () => {},
+          () => {
+            expect(secondSnippets).toContain("D-temp: temporary verification line");
+          },
         );
       },
     );
