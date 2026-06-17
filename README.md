@@ -11,13 +11,13 @@ A local, read-only MCP server that gives an AI coding agent live access to [nWav
 ## Installation
 
 ```bash
-npx lore-mcp
+npx @koed00/lore-mcp
 ```
 
 Or install globally:
 
 ```bash
-npm install -g lore-mcp
+npm install -g @koed00/lore-mcp
 ```
 
 ---
@@ -133,7 +133,7 @@ Add to your Claude Code MCP config (`~/.claude/claude_desktop_config.json` or `.
   "mcpServers": {
     "lore-mcp": {
       "command": "npx",
-      "args": ["lore-mcp"],
+      "args": ["@koed00/lore-mcp"],
       "env": {
         "LORE_MCP_CONFIG": "/absolute/path/to/lore-mcp.config.json"
       }
