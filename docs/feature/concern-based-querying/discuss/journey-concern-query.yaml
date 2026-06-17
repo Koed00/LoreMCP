@@ -1,0 +1,244 @@
+schema_version: 1
+
+journey:
+  name: "Concern-Based Querying"
+  goal: "Given a topic or concern, return the authoritative owner, relevant ADRs, binding decisions, and rejected alternatives — across all configured repos, without knowing the repo or feature_id upfront"
+  persona: "AI coding agent (Claude Code), operating in any configured repo, on behalf of Maria Santos"
+
+  emotional_arc:
+    start: "Uncertain/Blocked — agent is about to design a feature and has no way to query by concern without knowing the repo+feature_id first"
+    middle: "Curious/Engaged — agent calls resolve_concern() and waits for a cross-repo scan to complete"
+    end: "Confident (or Grounded-with-caveat) — agent has an attributed, structured result with explicit warnings about what's missing"
+
+steps:
+  - id: 1
+    name: "Agent Expresses Concern"
+    command: "resolve_concern(concern=\"auth\")"
+
+    tui_mockup: |
+      Agent has no upfront knowledge of which repo or feature_id to look in.
+      It only knows the concern topic from the problem at hand.
+
+      MCP tool call:
+        resolve_concern(concern="${concern}")
+
+      where ${concern} = plain-language topic string, e.g.:
+        "auth", "data persistence", "rate-limiting", "session management",
+        "error handling", "logging", "feature flags"
+
+    shared_artifacts:
+      - name: "concern"
+        source: "caller input (the agent)"
+        displayed_as: "\"concern\": \"${concern}\""
+        consumers: ["resolve_concern input parameter", "response envelope", "CONCERN_NOT_FOUND error body"]
+
+    emotional_state:
+      entry: "Blocked — agent recognises it needs cross-repo context but does not know where to look"
+      exit: "Curious — agent has expressed its need; the system takes responsibility for the search"
+
+    integration_checkpoint: |
+      concern string must be non-empty. If empty, return INVALID_CONCERN
+      structured error immediately (no scan attempted).
+
+    failure_modes:
+      - "Empty concern string passed — return INVALID_CONCERN"
+      - "Concern string contains only whitespace — normalise then return INVALID_CONCERN if empty after trim"
+
+    gherkin: |
+      Scenario: Agent queries by concern without knowing repo or feature_id
+        Given the agent is about to design a feature touching "auth"
+        And the agent does not know which repo or feature_id owns "auth"
+        When the agent calls resolve_concern(concern="auth")
+        Then the system begins a cross-repo scan across all configured repos
+        And no repo_name or feature_id is required from the caller
+
+  - id: 2
+    name: "Cross-Repo Scan Executes"
+    command: "(internal: keyword match across all configured repos)"
+
+    tui_mockup: |
+      For each {repo_name, doc_path} in config:
+        Scan:
+          docs/feature/**/wave-decisions.md      <- feature-level decisions
+          docs/feature/**/feature-delta.md       <- feature-level deltas
+          docs/product/architecture/*.md         <- ADRs (architecture-level)
+          CLAUDE.md                              <- repo conventions
+
+        Match strategy:
+          - case-insensitive keyword match of ${concern} in file content
+          - also match ${concern} against docs/feature/{feature_id}/ dir names
+          - rank: feature-level > architecture-level > CLAUDE.md
+
+        Collect:
+          - matched files with source_file, phase, snippet, relevance
+          - files containing "rejected" / "out of scope" / "not built" near ${concern}
+            -> add to rejected_paths[]
+
+    shared_artifacts:
+      - name: "repo_name"
+        source: "lore-mcp.config.json"
+        displayed_as: "\"repo_name\": \"${repo_name}\""
+        consumers: ["matches array", "searched_repos list", "warnings"]
+      - name: "doc_path"
+        source: "lore-mcp.config.json"
+        displayed_as: "(internal scan root)"
+        consumers: ["DocTreeReader scan root", "source_file path prefix"]
+      - name: "source_file"
+        source: "live filesystem scan"
+        displayed_as: "\"source_file\": \"${source_file}\""
+        consumers: ["matches array", "rejected_paths array"]
+      - name: "snippet"
+        source: "live file read (full content, size-capped per ADR-003)"
+        displayed_as: "\"snippet\": \"${snippet}\""
+        consumers: ["matches array", "rejected_paths array"]
+
+    emotional_state:
+      entry: "Curious — system is handling the search"
+      exit: "Engaged — matched files are being classified"
+
+    integration_checkpoint: |
+      All configured repos MUST be scanned (no early exit after first match).
+      If a repo's doc_path is unreachable, log a warning and continue scanning
+      remaining repos — do NOT abort the entire scan.
+      source_file paths must be absolute and consistent with query_context format.
+
+    failure_modes:
+      - "One repo's doc_path is unreachable — skip and add warning, continue"
+      - "All repos unreachable — return CONCERN_NOT_FOUND with searched_repos empty + per-repo warnings"
+      - "No files match the concern in any repo — proceed to Step 3 with empty matches"
+      - "File disappears between readdir and readFile (TOCTOU) — omit from results, add warning (same pattern as ADR-004)"
+
+    gherkin: |
+      Scenario: Keyword match finds feature-level and architecture-level results
+        Given ab-mcp is configured with 3 repos: ab-mcp, nwave-cli, nwave-skills
+        And "nwave-cli" has docs/feature/auth-flow/design/wave-decisions.md containing "auth"
+        And "nwave-cli" has docs/product/architecture/ADR-0007-auth-strategy.md containing "auth"
+        When resolve_concern(concern="auth") executes the scan
+        Then matches includes the wave-decisions.md result with relevance "feature-level"
+        And matches includes the ADR result with relevance "architecture-level"
+        And shared artifact source_file is rooted in nwave-cli's configured doc_path
+
+      Scenario: Scan continues when one repo is unreachable
+        Given ab-mcp is configured with 3 repos, one of which has a broken doc_path
+        When resolve_concern(concern="auth") executes the scan
+        Then matches are returned from the 2 reachable repos
+        And warnings includes a notice for the skipped repo
+        And the response is not an error
+
+  - id: 3
+    name: "Agent Receives Structured Response"
+    command: "(response delivered to agent)"
+
+    tui_mockup: |
+      Happy path — concern resolved:
+      {
+        "concern": "${concern}",
+        "matches": [
+          {
+            "repo_name": "${repo_name}",
+            "source_file": "${source_file}",
+            "phase": "${phase}",
+            "snippet": "${snippet}",
+            "relevance": "feature-level | architecture-level | repo-conventions"
+          }
+        ],
+        "rejected_paths": [
+          {
+            "repo_name": "${repo_name}",
+            "source_file": "${source_file}",
+            "snippet": "${snippet}",
+            "type": "rejected_alternative"
+          }
+        ],
+        "warnings": [],
+        "retrieved_at": "live (no cache)"
+      }
+
+      Partial path — only ADR/CLAUDE.md found:
+      {
+        "concern": "${concern}",
+        "matches": [...],
+        "rejected_paths": [],
+        "warnings": [
+          "No feature-level wave-decisions.md found for concern '${concern}'
+           in any configured repo -- returning architecture-level context only."
+        ],
+        "retrieved_at": "live (no cache)"
+      }
+
+      No-match path:
+      {
+        "error": "CONCERN_NOT_FOUND",
+        "concern": "${concern}",
+        "message": "No matches found for '${concern}' in any configured repo...",
+        "searched_repos": ["${repo_name_1}", "${repo_name_2}", "..."],
+        "retrieved_at": "live (no cache)"
+      }
+
+    shared_artifacts:
+      - name: "retrieved_at"
+        source: "runtime constant (no-cache property, per ADR-004)"
+        displayed_as: "\"retrieved_at\": \"live (no cache)\""
+        consumers: ["every resolve_concern response (happy, partial, no-match)"]
+      - name: "warnings"
+        source: "classification logic (same as query_context)"
+        displayed_as: "\"warnings\": [\"...\"]"
+        consumers: ["partial results, repo-skip notices"]
+
+    emotional_state:
+      entry: "Engaged — response arriving"
+      exit: "Confident (full result) | Grounded-with-caveat (partial) | Informed (not found)"
+
+    integration_checkpoint: |
+      retrieved_at must be present on EVERY response including CONCERN_NOT_FOUND.
+      warnings format must match query_context response warnings (same shared artifact shape).
+      source_file paths must use the same absolute-path format as query_context results.
+
+    failure_modes:
+      - "Response missing retrieved_at — property test regression (same guard as US-05)"
+      - "CONCERN_NOT_FOUND missing searched_repos — response contract violation"
+
+    gherkin: |
+      Scenario: Full result with feature-level match and rejected alternatives
+        Given "nwave-cli" has auth-flow/design/wave-decisions.md containing "auth"
+          and a section with "Rejected: OAuth2"
+        When resolve_concern(concern="auth") returns
+        Then the response contains matches with relevance "feature-level"
+        And the response contains rejected_paths with type "rejected_alternative"
+        And "retrieved_at" is present and indicates a live read
+        And warnings is empty (no partial-structure caveat needed)
+
+      Scenario: Partial result — only ADRs match, no feature-level decisions
+        Given no configured repo has a docs/feature/*/ directory whose content mentions "rate-limiting"
+        And "billing-service" has docs/product/architecture/ADR-0003-rate-limiting.md
+        When resolve_concern(concern="rate-limiting") returns
+        Then matches contains the ADR result with relevance "architecture-level"
+        And warnings contains "No feature-level wave-decisions.md found for concern 'rate-limiting'"
+        And the response is NOT an error
+
+      Scenario: No-match — concern undecided across all repos
+        Given no configured repo has any document mentioning "graphql-federation"
+        When resolve_concern(concern="graphql-federation") returns
+        Then the response is an error "CONCERN_NOT_FOUND"
+        And searched_repos lists all configured repo names
+        And "retrieved_at" is still present
+
+integration_validation:
+  shared_artifact_consistency:
+    - artifact: "source_file"
+      must_match_across: [2, 3]
+      failure_message: "source_file in matches must use absolute paths consistent with query_context format"
+    - artifact: "retrieved_at"
+      must_match_across: [3]
+      failure_message: "retrieved_at must appear on every response — happy, partial, CONCERN_NOT_FOUND"
+    - artifact: "warnings"
+      must_match_across: [3]
+      failure_message: "warnings format must be identical to query_context warnings (string array)"
+    - artifact: "repo_name"
+      must_match_across: [1, 2, 3]
+      failure_message: "repo_name values in response must match config repo-name values exactly"
+
+changelog:
+  - date: "2026-06-17"
+    feature: "concern-based-querying"
+    change: "Initial journey schema created in DISCUSS wave"

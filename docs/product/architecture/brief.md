@@ -13,10 +13,11 @@
 
 LoreMCP is a **local, read-only MCP (Model Context Protocol) server** that gives an AI coding agent (e.g., Claude Code), operating in "Repo A", live read access to nWave-structured documentation (`wave-decisions.md`/`feature-delta.md`, ADRs under `docs/product/architecture/`, `CLAUDE.md`) in a configured list of sibling repos ("Repo B/C/D...").
 
-Capabilities (from US-01..US-05):
+Capabilities (from US-01..US-05 + US-CBQ-01..US-CBQ-04):
 - `list_features(repo_name)` -- enumerate `docs/feature/*/` and phase subdirectories for a configured repo, plus `has_architecture_adrs`/`has_claude_md` flags.
 - `query_context(repo_name, feature_id)` -- return live-read snippets from wave-decisions/feature-delta, ADRs, and/or CLAUDE.md, each with `source_file`, `phase`, `snippet`, plus `retrieved_at` and a `warnings` array for partial structure.
-- Structured errors only: `REPO_NOT_CONFIGURED`, `REPO_PATH_NOT_FOUND`, `FEATURE_NOT_FOUND`, `NO_NWAVE_STRUCTURE` -- never raw exceptions.
+- `resolve_concern(concern)` -- keyword-search ALL configured repos for nWave artifacts (wave-decisions.md, feature-delta.md, ADRs, CLAUDE.md) mentioning the concern topic. Returns `matches` (with `repo_name`, `source_file`, `phase`, `snippet`, `relevance` tier), `rejected_paths` (rejection clauses near the concern keyword), and `warnings` (skipped repos, partial-structure notices). No `repo_name` parameter -- the whole point is the caller does not know which repo owns the concern.
+- Structured errors only: `REPO_NOT_CONFIGURED`, `REPO_PATH_NOT_FOUND`, `FEATURE_NOT_FOUND`, `NO_NWAVE_STRUCTURE`, `CONCERN_NOT_FOUND`, `INVALID_CONCERN` -- never raw exceptions.
 
 Out of scope (confirmed, do not build): ownership/boundary mapping, CLAUDE.md auto-injection, caching/invalidation, semantic/vector search.
 
@@ -199,7 +200,43 @@ C4Container
   Rel(formatter, mcpserver, "Returns shaped JSON response to")
 ```
 
-L3 (Component) diagram omitted -- 5 containers within a single process is below the "5+ internal components / complex subsystem" threshold for L3 per C4 guidance; each container above is a single-purpose module (1-3 files).
+#### 5.3 Component (L3) -- concern-based-querying addition
+
+With `resolve_concern` added, the `src/core/` layer now has 3 modules and the `src/shell/` layer has 4 modules, crossing the threshold for an L3 diagram to show the new component and its relationships.
+
+```mermaid
+C4Component
+  title Component Diagram -- LoreMCP (concern-based-querying addition)
+
+  Person(agent, "AI Coding Agent", "Claude Code")
+
+  Container_Boundary(shell, "src/shell/ (imperative shell -- IO only)") {
+    Component(server, "server.ts", "TypeScript, @modelcontextprotocol/sdk", "Registers list_features / query_context / resolve_concern tools; orchestrates shell→core→shell→formatter pipeline; converts camelCase to snake_case for MCP JSON contract")
+    Component(configloader, "config-loader.ts", "TypeScript, node:fs", "Loads and validates lore-mcp.config.json into RepoEntry[]; called fresh on every tool invocation (ADR-004)")
+    Component(fsdoctreereader, "fs-doc-tree-reader.ts", "TypeScript, node:fs", "Implements DocTreeReader: probe / listDir / readFile / pathExists -- the ONLY module that imports node:fs")
+  }
+
+  Container_Boundary(core, "src/core/ (functional core -- pure functions, zero IO)") {
+    Component(classifystructure, "classify-structure.ts", "TypeScript (pure)", "classifyStructure: given TreeSnapshot + feature_id, returns filesToRead + outcome + warnings. classifyRepoForListFeatures: returns feature list + flags. TreeSnapshot type shared with shell.")
+    Component(formatresponse, "format-response.ts", "TypeScript (pure)", "Shapes all response and error types: QueryContextResponse, ListFeaturesResponse, ResolveConcernResponse, ConcernNotFoundError, InvalidConcernError, StructuredError union. Formatters: formatQueryContextResponse, formatListFeaturesResponse, formatResolveConcernResponse, formatInvalidConcern, formatConcernNotFound.")
+    Component(concernmatcher, "concern-matcher.ts", "TypeScript (pure)", "NEW. validateConcern: checks non-empty + alphanumeric. matchConcernInSnapshot: case-insensitive keyword scan over pre-read file contents + feature directory names; returns ConcernMatch[] ranked by relevance tier + RejectedPath[]. detectRejectedPaths: paragraph-granularity rejection keyword detection.")
+  }
+
+  ContainerDb(configfile, "lore-mcp.config.json", "JSON file", "List of {repo-name, doc-path} entries")
+  ContainerDb(repodocs, "Configured repos' docs/", "Filesystem", "wave-decisions.md, ADRs, CLAUDE.md per repo")
+
+  Rel(agent, server, "Calls resolve_concern(concern) / list_features(repo_name) / query_context(repo_name, feature_id) via MCP/stdio")
+  Rel(server, configloader, "Loads config via")
+  Rel(configloader, configfile, "Reads live from")
+  Rel(server, fsdoctreereader, "Probes doc_path and reads files via")
+  Rel(fsdoctreereader, repodocs, "Lists dirs and reads file content from")
+  Rel(server, classifystructure, "Classifies tree snapshot for query_context and list_features via")
+  Rel(server, concernmatcher, "Validates concern and matches content across all repos via")
+  Rel(server, formatresponse, "Shapes all MCP responses via")
+  Rel(concernmatcher, formatresponse, "ConcernMatch / RejectedPath types consumed by")
+```
+
+Note: `concern-matcher.ts` does NOT import `classify-structure.ts`. It derives the relevance tier directly from file path patterns (same rules, independent implementation) to avoid a cross-core coupling that would entangle two different classification concerns.
 
 ---
 
@@ -260,14 +297,17 @@ No proprietary technology anywhere in the stack.
 
 - **Transport**: MCP over stdio (standard for local Claude Code MCP servers) -- `@modelcontextprotocol/sdk`'s `StdioServerTransport`.
 - **Tool contracts** (informational -- exact JSON Schema is a software-crafter implementation detail, but the SHAPES below are binding per shared-artifacts-registry.md):
-  - `list_features(repo_name: string)` -> `{repo_name, doc_path, features: [{feature_id, phases: string[]}], has_architecture_adrs: boolean, has_claude_md: boolean}` | or one of the 4 error shapes
-  - `query_context(repo_name: string, feature_id: string)` -> `{repo_name, feature_id, results: [{source_file, phase, snippet}], retrieved_at: string, warnings?: string[]}` | or one of the 4 error shapes
-- **Error shapes** (all 4, SCREAMING_SNAKE_CASE `error` field):
+  - `list_features(repo_name: string)` -> `{repo_name, doc_path, features: [{feature_id, phases: string[]}], has_architecture_adrs: boolean, has_claude_md: boolean}` | or one of the structured error shapes
+  - `query_context(repo_name: string, feature_id: string)` -> `{repo_name, feature_id, results: [{source_file, phase, snippet}], retrieved_at: string, warnings?: string[]}` | or one of the structured error shapes
+  - `resolve_concern(concern: string)` -> `{concern, matches: [{repo_name, source_file, phase, snippet, relevance}], rejected_paths: [{repo_name, source_file, snippet, type}], warnings?: string[], retrieved_at: string}` | `CONCERN_NOT_FOUND` | `INVALID_CONCERN`
+- **Error shapes** (all 6, SCREAMING_SNAKE_CASE `error` field):
   - `REPO_NOT_CONFIGURED`: `{error, repo_name, message, available_repos: string[]}`
   - `REPO_PATH_NOT_FOUND`: `{error, repo_name, configured_path, message, available_repos: string[]}`
   - `FEATURE_NOT_FOUND`: `{error, repo_name, feature_id, message, available_features: string[]}`
   - `NO_NWAVE_STRUCTURE`: `{error, repo_name, configured_path, message}`
-- **No caching, no network, no DB** -- every call re-reads config + filesystem live (US-05).
+  - `CONCERN_NOT_FOUND`: `{error, concern, message, searched_repos: string[], warnings?: string[], retrieved_at: string}` -- `searched_repos` lists only repos where the probe succeeded; skipped repos appear in `warnings`.
+  - `INVALID_CONCERN`: `{error, concern, message, retrieved_at: string}` -- returned immediately (before any config load or fs access) for empty, whitespace-only, or non-alphanumeric concern strings.
+- **No caching, no network, no DB** -- every call re-reads config + filesystem live (ADR-004).
 - **External integrations**: NONE detected. Sibling repo filesystems are local read-only inputs, not API partners -- no contract testing required.
 
 ---
@@ -307,20 +347,21 @@ Per Principle 12, the `DocTreeReader` adapter (the one shell module that touches
 - `adr-002-config-file-format.md` -- JSON config format
 - `adr-003-snippet-extraction-approach.md` -- whole-file-with-truncation extraction strategy
 - `adr-004-no-caching-live-read.md` -- live filesystem reads, no caching layer
+- `adr-005-concern-matching-strategy.md` -- keyword matching for resolve_concern (concern-based-querying feature)
 
 ---
 
 ### 11. Quality Gate Self-Check
 
-- [x] Requirements traced to components (Section 4-6 map directly to US-01..US-05 / shared-artifacts-registry.md)
-- [x] Component boundaries with clear responsibilities (Section 5.2, Section 6)
-- [x] Technology choices in ADRs with alternatives (Section 10, ADR files)
-- [x] Quality attributes addressed: maintainability/testability (Section 6), reliability via structured errors (Section 8-9), performance N/A documented (local fs reads, no perf NFR), security N/A (read-only, local, no auth surface beyond fs permissions -- covered by probe scenario 3)
-- [x] Dependency-inversion compliance: core has zero IO imports, enforced via dependency-cruiser (Section 6, Section 9)
-- [x] C4 diagrams: L1 + L2 in Mermaid (Section 5); L3 omitted with justification
-- [x] Integration patterns specified (Section 8)
-- [x] OSS preference validated -- all choices MIT/Apache 2.0 (Section 7)
-- [x] AC behavioral, not implementation-coupled (response-shape based, per Section 8)
+- [x] Requirements traced to components (Section 4-6 map to US-01..US-05; concern-based-querying extension maps to US-CBQ-01..US-CBQ-04 via architecture-design.md Changes Per File table)
+- [x] Component boundaries with clear responsibilities (Section 5.2, Section 5.3, Section 6)
+- [x] Technology choices in ADRs with alternatives (Section 10, ADR files -- ADR-005 added)
+- [x] Quality attributes addressed: maintainability/testability (Section 6), reliability via structured errors (Section 8), performance N/A documented (local fs reads, no perf NFR), security N/A (read-only, local, no auth surface)
+- [x] Dependency-inversion compliance: core has zero IO imports, enforced via dependency-cruiser (Section 6, Section 9); `concern-matcher.ts` is pure by same rule
+- [x] C4 diagrams: L1 + L2 in Mermaid (Section 5.1, 5.2); L3 added for concern-based-querying (Section 5.3, 3 core modules + 3 shell modules)
+- [x] Integration patterns specified (Section 8) -- `resolve_concern` contract added
+- [x] OSS preference validated -- all choices MIT/Apache 2.0 (Section 7); no new dependencies added
+- [x] AC behavioral, not implementation-coupled (response-shape based, per Section 8 and architecture-design.md)
 - [x] External integrations: NONE -- explicitly stated, no contract-test annotation needed
-- [x] Architectural enforcement tooling recommended: `dependency-cruiser` (Section 6, Section 9)
-- [x] Probe contracts specified for the sole external dependency (filesystem) -- Section 9
+- [x] Architectural enforcement tooling recommended: `dependency-cruiser` (Section 6, Section 9); no new rules required for concern-matcher (existing `core/**` rule covers it)
+- [x] Probe contracts specified for the sole external dependency (filesystem) -- Section 9; no new probe scenarios for resolve_concern (reuses existing DocTreeReader.probe() per-repo)
