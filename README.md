@@ -46,7 +46,7 @@ CLAUDE.md                                           ← repo root crafter guidan
 Point the server at your config via the `LORE_MCP_CONFIG` environment variable (defaults to `lore-mcp.config.json` in the working directory):
 
 ```bash
-LORE_MCP_CONFIG=/absolute/path/to/lore-mcp.config.json npx lore-mcp
+LORE_MCP_CONFIG=/absolute/path/to/lore-mcp.config.json npx @koed00/lore-mcp
 ```
 
 ---
