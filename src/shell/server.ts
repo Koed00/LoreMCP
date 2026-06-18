@@ -243,5 +243,25 @@ export function createServer(options: CreateServerOptions): McpServer {
     },
   );
 
+  server.registerTool(
+    "resolve_concern",
+    {
+      description:
+        "Search all configured repos for nWave artifacts mentioning concern, returning matches (with relevance tier), rejected alternatives, and partial-structure warnings. No repo_name required — searches across all configured repos.",
+      inputSchema: { concern: z.string() },
+    },
+    async (_args) => {
+      // RED scaffold -- replaced by the software-crafter in DELIVER wave.
+      // Returning a structured error (not throwing) so the tool is callable
+      // and tests fail with a business-level assertion, not an MCP transport error.
+      return toToolResult({
+        error: "NOT_IMPLEMENTED",
+        message:
+          "resolve_concern is a RED scaffold awaiting DELIVER wave implementation. See docs/feature/concern-based-querying/distill/wave-decisions.md.",
+        retrieved_at: `live (uncached) read at ${new Date().toISOString()}`,
+      });
+    },
+  );
+
   return server;
 }
