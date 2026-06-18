@@ -281,8 +281,10 @@ export function createServer(options: CreateServerOptions): McpServer {
       const skipWarnings: string[] = [];
 
       for (const entry of repos) {
+        const repoRootForEntry = path.dirname(entry.docPath);
         const probe = reader.probe(entry.docPath);
-        if (!probe.ok) {
+        const hasClaudeMd = reader.pathExists(path.join(repoRootForEntry, CLAUDE_MD_FILENAME));
+        if (!probe.ok && !hasClaudeMd) {
           skipWarnings.push(`Skipped repo "${entry.repoName}": ${probe.reason}`);
           continue;
         }
