@@ -134,6 +134,41 @@
       "s": "SKIPPED",
       "d": "NOT_APPLICABLE: Cross-repo handler already implemented from 01-01; no additional unit tests required",
       "t": "2026-06-18T17:18:14Z"
+    },
+    {
+      "sid": "03-01",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-18T17:18:43Z"
+    },
+    {
+      "sid": "04-01",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-18T17:23:32Z"
+    },
+    {
+      "sid": "04-01",
+      "p": "RED_ACCEPTANCE",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: All 5 scenarios in release-3-rejected-paths.steps.ts were already passing \u2014 implementation (detectRejectedPaths + partial-structure warning) was delivered in the walking skeleton commit (613d7ea). No @skip tags present; no RED phase needed.",
+      "t": "2026-06-18T17:23:37Z"
+    },
+    {
+      "sid": "04-01",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: Unit tests for detectRejectedPaths already exist in tests/core/concern-matcher.test.ts and were passing. No new unit tests required.",
+      "t": "2026-06-18T17:23:40Z"
+    },
+    {
+      "sid": "04-01",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-18T17:23:42Z"
     }
   ]
 }
