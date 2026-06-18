@@ -2,6 +2,7 @@ import type {
   ClassifyResult,
   ListFeaturesResult,
 } from "./classify-structure.js";
+import type { ConcernMatch, RejectedPath } from "./concern-matcher.js";
 
 export type QueryContextResultItem = {
   sourceFile: string;
@@ -158,6 +159,81 @@ export function formatQueryContextResponse(
     results,
     retrievedAt: new Date().toISOString(),
     ...(warnings.length > 0 ? { warnings } : {}),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Concern-based querying response types and formatters
+// ---------------------------------------------------------------------------
+
+export type InvalidConcernError = {
+  error: "INVALID_CONCERN";
+  concern: string;
+  message: string;
+  retrievedAt: string;
+};
+
+export type ConcernNotFoundError = {
+  error: "CONCERN_NOT_FOUND";
+  concern: string;
+  message: string;
+  searchedRepos: string[];
+  warnings?: string[];
+  retrievedAt: string;
+};
+
+export type ResolveConcernResponse = {
+  concern: string;
+  matches: ConcernMatch[];
+  rejectedPaths: RejectedPath[];
+  warnings?: string[];
+  retrievedAt: string;
+};
+
+export function formatInvalidConcern(concern: string): InvalidConcernError {
+  return {
+    error: "INVALID_CONCERN",
+    concern,
+    message: `Concern "${concern}" is invalid. It must be non-empty and contain at least one alphanumeric character.`,
+    retrievedAt: "live (no cache)",
+  };
+}
+
+export function formatConcernNotFound(
+  concern: string,
+  searchedRepos: string[],
+  skipWarnings: string[],
+): ConcernNotFoundError {
+  return {
+    error: "CONCERN_NOT_FOUND",
+    concern,
+    message: `No nWave artifacts mentioning "${concern}" were found across the searched repos.`,
+    searchedRepos,
+    ...(skipWarnings.length > 0 ? { warnings: skipWarnings } : {}),
+    retrievedAt: "live (no cache)",
+  };
+}
+
+export function formatResolveConcernResponse(
+  concern: string,
+  allMatches: ConcernMatch[],
+  allRejectedPaths: RejectedPath[],
+  warnings: string[],
+): ResolveConcernResponse {
+  const hasFeatureLevelMatch = allMatches.some((m) => m.relevance === "feature-level");
+  const allWarnings = hasFeatureLevelMatch
+    ? warnings
+    : [
+        ...warnings,
+        `No feature-level documentation found for "${concern}". Matches are from architecture or repo-conventions only.`,
+      ];
+
+  return {
+    concern,
+    matches: allMatches,
+    rejectedPaths: allRejectedPaths,
+    ...(allWarnings.length > 0 ? { warnings: allWarnings } : {}),
+    retrievedAt: "live (no cache)",
   };
 }
 

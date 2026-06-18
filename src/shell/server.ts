@@ -15,9 +15,19 @@ import {
   formatQueryContextResponse,
   formatRepoNotConfigured,
   formatRepoPathNotFound,
+  formatInvalidConcern,
+  formatConcernNotFound,
+  formatResolveConcernResponse,
   type QueryContextResponse,
   type StructuredError,
 } from "../core/format-response.js";
+import {
+  validateConcern,
+  matchConcernInSnapshot,
+  type ConcernMatch,
+  type RejectedPath,
+  type ConcernScanInput,
+} from "../core/concern-matcher.js";
 
 export type CreateServerOptions = {
   configPath: string;
@@ -250,16 +260,95 @@ export function createServer(options: CreateServerOptions): McpServer {
         "Search all configured repos for nWave artifacts mentioning concern, returning matches (with relevance tier), rejected alternatives, and partial-structure warnings. No repo_name required — searches across all configured repos.",
       inputSchema: { concern: z.string() },
     },
-    async (_args) => {
-      // RED scaffold -- replaced by the software-crafter in DELIVER wave.
-      // Returning a structured error (not throwing) so the tool is callable
-      // and tests fail with a business-level assertion, not an MCP transport error.
-      return toToolResult({
-        error: "NOT_IMPLEMENTED",
-        message:
-          "resolve_concern is a RED scaffold awaiting DELIVER wave implementation. See docs/feature/concern-based-querying/distill/wave-decisions.md.",
-        retrieved_at: `live (uncached) read at ${new Date().toISOString()}`,
-      });
+    async ({ concern }) => {
+      const validation = validateConcern(concern);
+      if (!validation.valid) {
+        return toToolResult(formatInvalidConcern(concern));
+      }
+
+      let repos: RepoEntry[];
+      try {
+        repos = loadConfig(options.configPath);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return toToolResult({ error: "CONFIG_ERROR", message: msg });
+      }
+
+      const allMatches: ConcernMatch[] = [];
+      const allRejectedPaths: RejectedPath[] = [];
+      const allWarnings: string[] = [];
+      const searchedRepos: string[] = [];
+      const skipWarnings: string[] = [];
+
+      for (const entry of repos) {
+        const probe = reader.probe(entry.docPath);
+        if (!probe.ok) {
+          skipWarnings.push(`Skipped repo "${entry.repoName}": ${probe.reason}`);
+          continue;
+        }
+
+        searchedRepos.push(entry.repoName);
+        const repoRoot = path.dirname(entry.docPath);
+        const docPathRelative = path.relative(repoRoot, entry.docPath);
+        const snapshot = buildTreeSnapshot(reader, entry);
+
+        // Collect feature files
+        const featureFiles: ConcernScanInput["featureFiles"] = [];
+        const featureDirectoryNames = Object.keys(snapshot.features);
+        for (const [featureId, phases] of Object.entries(snapshot.features)) {
+          for (const phase of phases) {
+            const sourceFile = path.join(docPathRelative, FEATURE_DIR, featureId, phase, "wave-decisions.md");
+            const absolutePath = path.join(repoRoot, sourceFile);
+            const outcome = reader.readFile(absolutePath);
+            if (outcome.ok) {
+              featureFiles.push({ sourceFile, phase, content: outcome.content });
+            }
+          }
+        }
+
+        // Collect ADR files
+        const adrFiles: ConcernScanInput["adrFiles"] = [];
+        for (const adrSourceFile of snapshot.adrFiles) {
+          const absolutePath = path.join(repoRoot, adrSourceFile);
+          const outcome = reader.readFile(absolutePath);
+          if (outcome.ok) {
+            adrFiles.push({ sourceFile: adrSourceFile, content: outcome.content });
+          }
+        }
+
+        // Collect CLAUDE.md
+        let claudeMdFile: ConcernScanInput["claudeMdFile"] = null;
+        if (snapshot.claudeMdPath !== null) {
+          const absolutePath = path.join(repoRoot, snapshot.claudeMdPath);
+          const outcome = reader.readFile(absolutePath);
+          if (outcome.ok) {
+            claudeMdFile = { sourceFile: snapshot.claudeMdPath, content: outcome.content };
+          }
+        }
+
+        const scanInput: ConcernScanInput = {
+          concern,
+          repoName: entry.repoName,
+          docPath: entry.docPath,
+          featureFiles,
+          adrFiles,
+          claudeMdFile,
+          featureDirectoryNames,
+        };
+
+        const result = matchConcernInSnapshot(scanInput);
+        allMatches.push(...result.matches);
+        allRejectedPaths.push(...result.rejectedPaths);
+        allWarnings.push(...result.truncationWarnings);
+      }
+
+      if (allMatches.length === 0) {
+        return toToolResult(formatConcernNotFound(concern, searchedRepos, [...skipWarnings, ...allWarnings]));
+      }
+
+      return toToolResult(
+        formatResolveConcernResponse(concern, allMatches, allRejectedPaths, [...skipWarnings, ...allWarnings]),
+      );
     },
   );
 
