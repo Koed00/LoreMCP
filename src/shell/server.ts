@@ -19,7 +19,6 @@ import {
   formatConcernNotFound,
   formatResolveConcernResponse,
   type QueryContextResponse,
-  type StructuredError,
 } from "../core/format-response.js";
 import {
   validateConcern,
@@ -281,16 +280,15 @@ export function createServer(options: CreateServerOptions): McpServer {
       const skipWarnings: string[] = [];
 
       for (const entry of repos) {
-        const repoRootForEntry = path.dirname(entry.docPath);
+        const repoRoot = path.dirname(entry.docPath);
         const probe = reader.probe(entry.docPath);
-        const hasClaudeMd = reader.pathExists(path.join(repoRootForEntry, CLAUDE_MD_FILENAME));
+        const hasClaudeMd = reader.pathExists(path.join(repoRoot, CLAUDE_MD_FILENAME));
         if (!probe.ok && !hasClaudeMd) {
           skipWarnings.push(`Skipped repo "${entry.repoName}": ${probe.reason}`);
           continue;
         }
 
         searchedRepos.push(entry.repoName);
-        const repoRoot = path.dirname(entry.docPath);
         const docPathRelative = path.relative(repoRoot, entry.docPath);
         const snapshot = buildTreeSnapshot(reader, entry);
 
