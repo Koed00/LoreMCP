@@ -169,6 +169,55 @@
       "s": "EXECUTED",
       "d": "PASS",
       "t": "2026-06-18T17:23:42Z"
+    },
+    {
+      "sid": "04-01",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-18T17:50:13Z"
+    },
+    {
+      "sid": "post-merge-integration",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS: 303/303 tests, all 4 release files green, Elevator Pitch demo resolve_concern(auth) returns live matches",
+      "t": "2026-06-18T17:56:12Z"
+    },
+    {
+      "sid": "refactor",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-18T20:25:08Z"
+    },
+    {
+      "sid": "refactor",
+      "p": "RED_ACCEPTANCE",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: refactor step does not execute TDD cycles; L1-L4 refactoring on production files only",
+      "t": "2026-06-18T20:25:12Z"
+    },
+    {
+      "sid": "refactor",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: refactor step does not write new tests; 303 existing tests remain green throughout",
+      "t": "2026-06-18T20:25:17Z"
+    },
+    {
+      "sid": "refactor",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS: L1 dead import (StructuredError) removed, L1/L2 duplicate repoRoot computation eliminated in server.ts; concern-matcher.ts and format-response.ts required no changes; 303/303 tests green, npm run check:arch passes",
+      "t": "2026-06-18T20:25:21Z"
+    },
+    {
+      "sid": "refactor",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS: commit 353cd35 'refactor(concern-based-querying): L1-L4 clean pass on modified files'",
+      "t": "2026-06-18T20:25:25Z"
     }
   ]
 }
