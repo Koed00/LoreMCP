@@ -125,6 +125,27 @@ describe("extractHeadingAnchoredSnippet", () => {
     expect(result).not.toContain("## D-2: monitoring");
   });
 
+  it("keeps an ancestor whose own text genuinely matches, and still applies density among it and its descendant", () => {
+    const content = [
+      "# ADR-005: Concern Matching Strategy",
+      "",
+      "We use case-insensitive concern matching across all matching nWave artifacts.",
+      "Concern matching is applied uniformly regardless of file type.",
+      "",
+      "## Alternatives Considered",
+      "",
+      "Semantic concern matching via embeddings was considered and rejected.",
+    ].join("\n");
+
+    const result = extractHeadingAnchoredSnippet(content, "concern matching");
+
+    // The H1's own text (3 occurrences) out-densities the H2 descendant's own
+    // text (1 occurrence) -- the ancestor is NOT excluded because it has a
+    // genuine own-text match, and correctly wins the density comparison.
+    expect(result).not.toBeNull();
+    expect(result).toContain("# ADR-005: Concern Matching Strategy");
+  });
+
   it("returns null when no section contains a match (defensive case)", () => {
     const content = [
       "## D-1: deployment target",

@@ -19,3 +19,17 @@
 Added AC6 (regression scenario) to `heading-anchored-extraction.feature`: a file with one H1 title and 3 `##` subsections, concern appears in exactly one subsection — snippet must be scoped to that subsection, not the whole file. Function contract amended: candidate sections are first filtered to exclude any section that is a strict ancestor of another matching section, before density comparison runs.
 
 This is an additive correction to the architecture-design.md contract (step 5), not a reversal of any DISCUSS/DESIGN product decision — the binding multi-section product decision ("most keyword-dense section wins," resolved with the user during DISCUSS) is preserved; this fix only refines its scope to siblings rather than ancestors/descendants.
+
+## Clarification (post-adversarial-review, confirmed with user)
+
+When an ancestor section has a genuine match in its OWN text (not merely inherited from a descendant's text), it remains a density-eligible candidate alongside its descendants — density comparison decides the winner in that case, same as any other sibling comparison. "Most specific always wins" only applies to the original bug case: an ancestor whose ENTIRE match count comes from nested descendants (zero own-text matches). This was confirmed against live dogfood evidence: `adr-005-concern-matching-strategy.md`'s H1 title literally contains "Concern Matching Strategy," so it legitimately competes by density against any nested subsection and correctly wins (returning the broader, still-relevant document), rather than being artificially excluded in favor of a more deeply nested section.
+
+The escape-hatch code path (an ancestor retaining candidacy because of a genuine own-text match) was implemented but initially shipped without direct test coverage — added in the adversarial-review revision pass (Issue 2 below).
+
+## Issue 2: Escape-hatch path untested
+
+**Found during**: Adversarial review (DELIVER Phase 4), 2026-06-19.
+
+**Gap**: `excludeStructuralAncestors`'s "own-text match" escape hatch (an ancestor stays candidate-eligible if its own text, excluding descendants, contains the concern) had no unit or acceptance test directly exercising it. Existing tests covered: (a) a pure ancestor with zero own-text matches (correctly excluded — the original bug fix), and (b) flat sibling density comparison. Neither covered an ancestor WITH a genuine own-text match competing against a descendant.
+
+**Resolution**: Added a unit test in `tests/core/concern-matcher.test.ts` proving an ancestor with both a genuine own-text match and a higher-density count than its descendant is correctly retained and selected — confirming the escape hatch behaves as designed, not just by absence of a counter-example.
