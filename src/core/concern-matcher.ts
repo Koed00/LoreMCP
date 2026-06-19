@@ -175,11 +175,16 @@ function isStructuralAncestor(candidate: Section, other: Section): boolean {
   );
 }
 
-function excludeStructuralAncestors<T extends { sectionIndex: number }>(
-  candidates: T[],
+interface SectionOccurrence {
+  occurrenceCount: number;
+  sectionIndex: number;
+}
+
+function excludeStructuralAncestors(
+  candidates: SectionOccurrence[],
   sections: Section[],
   concern: string,
-): T[] {
+): SectionOccurrence[] {
   return candidates.filter((candidate) => {
     const candidateSection = sections[candidate.sectionIndex];
     if (!candidateSection) {
