@@ -4,7 +4,7 @@ A local, read-only MCP server that gives an AI coding agent live access to [nWav
 
 **The problem**: AI agents working in a codebase start each session blind. They have no way to query prior architectural decisions, domain constraints, or feature-level context before they act — so they reinvent patterns, contradict last sprint's decisions, or miss domain rules any experienced team member would know.
 
-**What LoreMCP does**: Exposes three MCP tools — `list_features`, `query_context`, and `resolve_concern` — that read wave-decisions, ADRs, and `CLAUDE.md` directly from your local filesystem and return them as structured JSON. No daemon, no sync, no remote calls. Point it at a folder, and your agent can ask "what decisions were made for feature X?" or "what does the platform use for auth?" before writing a single line.
+**What LoreMCP does**: Exposes four MCP tools — `list_concerns`, `list_features`, `query_context`, and `resolve_concern` — that read wave-decisions, ADRs, and `CLAUDE.md` directly from your local filesystem and return them as structured JSON. No daemon, no sync, no remote calls. Point it at a folder, and your agent can ask "what topics are already decided?", "what decisions were made for feature X?", or "what does the platform use for auth?" before writing a single line.
 
 ---
 
@@ -52,6 +52,24 @@ LORE_MCP_CONFIG=/absolute/path/to/lore-mcp.config.json npx @koed00/lore-mcp
 ---
 
 ## MCP Tools
+
+### `list_concerns`
+
+Scans all configured repos for candidate concern/topic strings (feature directory names, ADR titles, decision heading text) an agent can browse before calling `resolve_concern`. No arguments.
+
+**Input**: none
+
+**Output**:
+```json
+{
+  "concerns": ["auth-flow", "rate-limiting", "Concern Matching Strategy"],
+  "searched_repos": ["my-api", "shared-libs"]
+}
+```
+
+Candidates are deduplicated across repos. Capped at 200 entries (a `warnings` entry is added if truncated). `warnings` is only present when non-empty. Never returns an error shape — an empty `concerns` array is a valid response when no configured repo has nWave structure.
+
+---
 
 ### `list_features`
 
@@ -195,15 +213,14 @@ Add to your Claude Code MCP config (`~/.claude/claude_desktop_config.json` or `.
 
 ## Using LoreMCP while architecting
 
-LoreMCP is most valuable in the DISCUSS and DESIGN phases of a wave-based workflow (e.g. [nWave](https://github.com/nWave-ai/nWave)) — before code is written, when an agent needs to know what's already been decided elsewhere. `resolve_concern` alone only helps if the agent already knows which keyword to ask about; combine it with `list_features` for a "browse before you query" pass:
+LoreMCP is most valuable in the DISCUSS and DESIGN phases of a wave-based workflow (e.g. [nWave](https://github.com/nWave-ai/nWave)) — before code is written, when an agent needs to know what's already been decided elsewhere. `resolve_concern` alone only helps if the agent already knows which keyword to ask about; start with `list_concerns` for a "browse before you query" pass across every configured repo:
 
-1. **Browse**: call `list_features(repo_name)` on each sibling repo you know about to see what topics/features already have documented decisions, before guessing a keyword.
-2. **Search broadly**: call `resolve_concern(concern)` for each topic that might be relevant to what you're about to design (e.g. `"auth"`, `"rate-limiting"`, `"caching"`) — it scans every configured repo, no `repo_name` needed, and surfaces both accepted decisions and rejected alternatives.
-3. **Go deep**: once `resolve_concern` or `list_features` points you to a specific repo + feature, call `query_context(repo_name, feature_id)` for that feature's full decision history across every wave, not just a keyword-matched snippet.
+1. **Browse broadly**: call `list_concerns()` with no arguments to see every candidate concern/topic string across *all* configured repos — feature directory names, ADR titles, decision heading text — without needing to know a repo name or a keyword in advance.
+2. **Browse a known repo**: call `list_features(repo_name)` on a specific sibling repo you already know about to see what features/phases it has documented.
+3. **Search broadly**: call `resolve_concern(concern)` for each topic that might be relevant to what you're about to design (e.g. `"auth"`, `"rate-limiting"`, `"caching"`) — it scans every configured repo, no `repo_name` needed, and surfaces both accepted decisions and rejected alternatives.
+4. **Go deep**: once `resolve_concern`, `list_concerns`, or `list_features` points you to a specific repo + feature, call `query_context(repo_name, feature_id)` for that feature's full decision history across every wave, not just a keyword-matched snippet.
 
-**Example prompt to an agent**: *"Before designing the rate-limiting strategy for this service, use lore-mcp's resolve_concern to check whether any sibling repo has already decided how to do rate-limiting, and check for any rejected alternatives before proposing a new approach."*
-
-**Known gap**: there's currently no way to browse *all* concerns/decision-topics across repos without already knowing keywords to try — `list_features` only enumerates feature directories, not the decision topics buried inside `wave-decisions.md`/ADR files. A future `list_concerns()` tool (browse-before-you-query) is scoped but not yet built — see `docs/feature/heading-anchored-snippets/recommendation.md`'s backlog for the full rationale.
+**Example prompt to an agent**: *"Before designing the rate-limiting strategy for this service, use lore-mcp's list_concerns to see what topics are already documented across sibling repos, then use resolve_concern to check whether any of them already decided how to do rate-limiting, and check for any rejected alternatives before proposing a new approach."*
 
 ---
 
@@ -220,7 +237,7 @@ LoreMCP is most valuable in the DISCUSS and DESIGN phases of a wave-based workfl
 
 ```bash
 npm install
-npm test          # vitest, 369 tests
+npm test          # vitest, 417 tests
 npm run typecheck
 npm run check:arch  # dependency-cruiser: core must not import shell
 npm run test:mutation  # stryker, ≥80% kill rate gate

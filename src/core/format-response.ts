@@ -237,6 +237,24 @@ export function formatResolveConcernResponse(
   };
 }
 
+export type ListConcernsResponse = {
+  concerns: string[];
+  searchedRepos: string[];
+  warnings?: string[];
+};
+
+export function formatListConcernsResponse(
+  concerns: string[],
+  searchedRepos: string[],
+  warnings: string[],
+): ListConcernsResponse {
+  return {
+    concerns,
+    searchedRepos,
+    ...(warnings.length > 0 ? { warnings } : {}),
+  };
+}
+
 export function formatListFeaturesResponse(
   repoName: string,
   docPath: string,

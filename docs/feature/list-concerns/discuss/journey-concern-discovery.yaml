@@ -1,0 +1,44 @@
+schema_version: 1
+journey_id: concern-discovery
+maps_to_jobs:
+  - cross-repo-context-grounding
+steps:
+  - step: 1
+    actor: "AI coding agent"
+    action: "Calls list_concerns() (no arguments)"
+    tool_behavior: "Scans every configured repo's nWave artifacts"
+    output: "—"
+  - step: 2
+    actor: "tool"
+    action: "Detect decision-topic signals"
+    tool_behavior: "feature directory names, ADR titles/filenames, heading text within wave-decisions.md/ADR files"
+    output: "internal: raw candidate list per repo"
+  - step: 3
+    actor: "tool"
+    action: "Aggregate and deduplicate"
+    tool_behavior: "merge candidates across repos, dedupe identical topic strings"
+    output: "flat list of candidate concern strings, capped at 200"
+  - step: 4
+    actor: "AI coding agent"
+    action: "Reads the list"
+    output: "agent sees the landscape of decided topics"
+  - step: 5
+    actor: "AI coding agent"
+    action: "Picks a candidate, calls resolve_concern(concern)"
+    output: "existing flow, unchanged"
+error_paths:
+  - condition: "a configured repo has zero nWave structure"
+    behavior: "excluded from that repo's contribution, silently (consistent with resolve_concern's per-repo skip pattern)"
+  - condition: "all configured repos have zero nWave structure"
+    behavior: "empty concerns array with searched_repos listing what was checked -- not a hard error"
+  - condition: "more than 200 candidate topics found"
+    behavior: "capped at 200 (first 200 in repo-config order), truncation warning included"
+  - condition: "same concern-like string appears via multiple structural signals (dir name + ADR title) across repos"
+    behavior: "deduplicated to one entry in the output list"
+shared_artifacts:
+  - name: concerns
+    type: string[]
+    source: "new aggregation logic in src/core/, reusing heading/directory-name signals already used by resolve_concern and heading-anchored-snippets"
+  - name: concern
+    type: string
+    source: "one element from list_concerns()'s output, fed into resolve_concern -- no new type, reuses existing concern parameter shape"

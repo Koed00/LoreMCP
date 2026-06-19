@@ -44,6 +44,12 @@ export interface ConcernScanResult {
   truncationWarnings: string[];
 }
 
+export interface ConcernCandidateInput {
+  featureDirectoryNames: string[];
+  adrFiles: Array<{ sourceFile: string; content: string }>;
+  featureFiles: Array<{ sourceFile: string; phase: string; content: string }>;
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -294,6 +300,70 @@ export function detectRejectedPaths(
         type: "rejected_alternative" as const,
       };
     });
+}
+
+const ADR_NUMERIC_PREFIX_PATTERN = /^ADR[-\s]?\d+:\s*/i;
+const ADR_FILENAME_PATTERN = /^adr-\d+-(.+)\.md$/i;
+
+/**
+ * Extracts the TEXT of the first detected heading line in `content` (markup
+ * stripped), with any leading `ADR-NNN:`/`ADR NNN:` numbering convention
+ * also stripped. Returns null if `content` has no heading lines at all.
+ */
+export function extractFirstHeadingText(content: string): string | null {
+  const lines = content.split("\n");
+  const headings = detectHeadingLines(lines);
+  const firstHeading = headings[0];
+  if (!firstHeading) {
+    return null;
+  }
+
+  const headingLine = lines[firstHeading.lineIndex] ?? "";
+  const withoutMarkup = headingLine.replace(HEADING_PATTERN, "");
+  return withoutMarkup.replace(ADR_NUMERIC_PREFIX_PATTERN, "").trim();
+}
+
+/** Derives a fallback candidate string from an ADR filename lacking a heading. */
+function deriveAdrFilenameCandidate(sourceFile: string): string {
+  const fileName = sourceFile.split("/").pop() ?? sourceFile;
+  const match = fileName.match(ADR_FILENAME_PATTERN);
+  return match?.[1] ?? fileName.replace(/\.md$/i, "");
+}
+
+function collectAdrCandidates(
+  adrFiles: ConcernCandidateInput["adrFiles"],
+): string[] {
+  return adrFiles.map((adr) => extractFirstHeadingText(adr.content) ?? deriveAdrFilenameCandidate(adr.sourceFile));
+}
+
+function collectFeatureFileHeadingCandidates(
+  featureFiles: ConcernCandidateInput["featureFiles"],
+): string[] {
+  const candidates: string[] = [];
+  for (const file of featureFiles) {
+    const lines = file.content.split("\n");
+    const headings = detectHeadingLines(lines);
+    for (const heading of headings) {
+      const headingLine = lines[heading.lineIndex] ?? "";
+      candidates.push(headingLine.replace(HEADING_PATTERN, "").trim());
+    }
+  }
+  return candidates;
+}
+
+/**
+ * Per-repo candidate concern/topic extraction (US-LC-01). Returns the flat
+ * concatenation of feature directory names, ADR titles, and feature-file
+ * heading text, in that order. No deduplication and no cap here -- both
+ * happen once, across all repos combined, at the call site.
+ */
+export function collectConcernCandidates(input: ConcernCandidateInput): string[] {
+  const { featureDirectoryNames, adrFiles, featureFiles } = input;
+  return [
+    ...featureDirectoryNames,
+    ...collectAdrCandidates(adrFiles),
+    ...collectFeatureFileHeadingCandidates(featureFiles),
+  ];
 }
 
 export function matchConcernInSnapshot(input: ConcernScanInput): ConcernScanResult {

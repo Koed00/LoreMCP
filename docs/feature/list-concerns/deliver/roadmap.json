@@ -1,0 +1,71 @@
+{
+  "roadmap": {
+    "project_id": "list-concerns",
+    "created_at": "2026-06-19T15:10:00Z",
+    "total_steps": 2,
+    "phases": 1
+  },
+  "phases": [
+    {
+      "id": "01",
+      "name": "list_concerns() discovery tool",
+      "steps": [
+        {
+          "id": "01-01",
+          "name": "Implement collectConcernCandidates and list_concerns handler",
+          "description": "Replace the NOT_IMPLEMENTED stub for list_concerns in src/shell/server.ts with the real handler. Add collectConcernCandidates(input: ConcernCandidateInput): string[] and private helper extractFirstHeadingText(content: string): string | null to src/core/concern-matcher.ts per architecture-design.md contract: per-repo extraction returns feature directory names verbatim, ADR titles via extractFirstHeadingText with ADR-NNN: prefix stripped (filename-derived fallback if headingless), and heading text from every feature file via the existing detectHeadingLines. Add ListConcernsResponse type and formatListConcernsResponse formatter to src/core/format-response.ts. Wire the list_concerns handler in server.ts: loop over configured repos reusing resolve_concern's exact probe/skip pattern, accumulate candidates per repo via collectConcernCandidates, dedupe exact-string-match across the full accumulated list, cap at 200 entries in repo-config order with a truncation warning if exceeded, return searched_repos always populated, never an ERROR shape. Covers all 5 scenarios in list-concerns-discovery.feature.",
+          "estimated_hours": 3,
+          "dependencies": [],
+          "files_to_modify": [
+            "src/core/concern-matcher.ts",
+            "src/core/format-response.ts",
+            "src/shell/server.ts"
+          ],
+          "criteria": [
+            "list_concerns() returns candidate topics drawn from feature directory names and ADR titles across all configured repos",
+            "A repo with no nWave structure is silently excluded, not an error",
+            "All repos lacking nWave structure returns an empty concerns array, not an error",
+            "Duplicate topic signals across repos are deduplicated to one entry",
+            "Result capped at 200 entries with a truncation warning when exceeded"
+          ],
+          "test_file": "tests/acceptance/list-concerns/list-concerns-discovery.feature",
+          "scenario_name": "Candidate topics are drawn from feature directories and ADR titles across repos"
+        },
+        {
+          "id": "01-02",
+          "name": "Update README with list_concerns tool docs and close the gap",
+          "description": "Per architecture-design.md's Changes Per File table (FLAGGED FOR DELIVER ROADMAP): (1) Add a list_concerns() entry to README.md's '## MCP Tools' section, same format as the existing 3 tools (Input: none, Output: {concerns, searched_repos, warnings?}, no structured errors -- this tool never returns an ERROR shape). (2) Revise the 'Using LoreMCP while architecting' section's 'Known gap' paragraph (currently states list_concerns() is scoped but not yet built) to state the gap is CLOSED, and update the numbered workflow to recommend calling list_concerns() FIRST as the new browse step, before resolve_concern. This is part of this feature's delivery, not deferred documentation.",
+          "estimated_hours": 1,
+          "dependencies": ["01-01"],
+          "files_to_modify": [
+            "README.md"
+          ],
+          "criteria": [
+            "README's MCP Tools section documents list_concerns() with input/output shape matching the other 3 tools' documentation depth",
+            "README's 'Using LoreMCP while architecting' section no longer states list_concerns() is unbuilt -- the workflow is revised to call list_concerns() first"
+          ],
+          "test_file": null,
+          "scenario_name": null
+        }
+      ]
+    }
+  ],
+  "implementation_scope": {
+    "source_directories": [
+      "src/core/",
+      "src/shell/"
+    ],
+    "test_directories": [
+      "tests/acceptance/list-concerns/"
+    ],
+    "excluded_patterns": [
+      "__init__.py",
+      "__pycache__/**"
+    ]
+  },
+  "validation": {
+    "status": "approved",
+    "reviewer": "nw-acceptance-designer-reviewer",
+    "approved_at": "2026-06-19T15:12:00Z"
+  }
+}
