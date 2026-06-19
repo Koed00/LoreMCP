@@ -18,14 +18,17 @@ import {
   formatInvalidConcern,
   formatConcernNotFound,
   formatResolveConcernResponse,
+  formatListConcernsResponse,
   type QueryContextResponse,
 } from "../core/format-response.js";
 import {
   validateConcern,
   matchConcernInSnapshot,
+  collectConcernCandidates,
   type ConcernMatch,
   type RejectedPath,
   type ConcernScanInput,
+  type ConcernCandidateInput,
 } from "../core/concern-matcher.js";
 
 export type CreateServerOptions = {
@@ -352,9 +355,8 @@ export function createServer(options: CreateServerOptions): McpServer {
     },
   );
 
-  // RED scaffold (DISTILL, list-concerns feature) -- replaced with real
-  // implementation in DELIVER step 01-01. See
-  // docs/feature/list-concerns/design/architecture-design.md.
+  const MAX_CONCERN_CANDIDATES = 200;
+
   server.registerTool(
     "list_concerns",
     {
@@ -363,7 +365,70 @@ export function createServer(options: CreateServerOptions): McpServer {
       inputSchema: {},
     },
     async () => {
-      return toToolResult({ error: "NOT_IMPLEMENTED", message: "list_concerns is not yet implemented." });
+      let repos: RepoEntry[];
+      try {
+        repos = loadConfig(options.configPath);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return toToolResult({ error: "CONFIG_ERROR", message: msg });
+      }
+
+      const allCandidates: string[] = [];
+      const searchedRepos: string[] = [];
+      const skipWarnings: string[] = [];
+
+      for (const entry of repos) {
+        const repoRoot = path.dirname(entry.docPath);
+        searchedRepos.push(entry.repoName);
+
+        const probe = reader.probe(entry.docPath);
+        if (!probe.ok) {
+          continue;
+        }
+
+        const docPathRelative = path.relative(repoRoot, entry.docPath);
+        const snapshot = buildTreeSnapshot(reader, entry);
+
+        const featureFiles: ConcernCandidateInput["featureFiles"] = [];
+        const featureDirectoryNames = Object.keys(snapshot.features);
+        for (const [featureId, phases] of Object.entries(snapshot.features)) {
+          for (const phase of phases) {
+            const sourceFile = path.join(docPathRelative, FEATURE_DIR, featureId, phase, "wave-decisions.md");
+            const absolutePath = path.join(repoRoot, sourceFile);
+            const outcome = reader.readFile(absolutePath);
+            if (outcome.ok) {
+              featureFiles.push({ sourceFile, phase, content: outcome.content });
+            }
+          }
+        }
+
+        const adrFiles: ConcernCandidateInput["adrFiles"] = [];
+        for (const adrSourceFile of snapshot.adrFiles) {
+          const absolutePath = path.join(repoRoot, adrSourceFile);
+          const outcome = reader.readFile(absolutePath);
+          if (outcome.ok) {
+            adrFiles.push({ sourceFile: adrSourceFile, content: outcome.content });
+          }
+        }
+
+        const candidates = collectConcernCandidates({
+          featureDirectoryNames,
+          adrFiles,
+          featureFiles,
+        });
+        allCandidates.push(...candidates);
+      }
+
+      const deduped = Array.from(new Set(allCandidates));
+      const capped = deduped.slice(0, MAX_CONCERN_CANDIDATES);
+      const truncationWarning =
+        deduped.length > MAX_CONCERN_CANDIDATES
+          ? [`Result truncated to ${MAX_CONCERN_CANDIDATES} of ${deduped.length} candidate concerns.`]
+          : [];
+
+      return toToolResult(
+        formatListConcernsResponse(capped, searchedRepos, [...skipWarnings, ...truncationWarning]),
+      );
     },
   );
 

@@ -4,6 +4,8 @@ import {
   matchConcernInSnapshot,
   detectRejectedPaths,
   extractHeadingAnchoredSnippet,
+  collectConcernCandidates,
+  extractFirstHeadingText,
   type ConcernScanInput,
 } from "../../src/core/concern-matcher.js";
 
@@ -673,5 +675,115 @@ describe("formatResolveConcernResponse (via format-response)", async () => {
     const result = formatResolveConcernResponse("auth", matches, [], []);
     expect(result.warnings).toBeDefined();
     expect(result.warnings!.some((w) => /feature/i.test(w))).toBe(true);
+  });
+});
+
+describe("extractFirstHeadingText", () => {
+  it("strips the leading markup and the ADR-NNN: numeric prefix from the first heading", () => {
+    const content = "# ADR-005: Concern Matching Strategy\n\nWe use keyword matching.\n";
+    expect(extractFirstHeadingText(content)).toBe("Concern Matching Strategy");
+  });
+
+  it("strips an 'ADR NNN:' (space-separated) numeric prefix as well", () => {
+    const content = "## ADR 12: Some Other Title\n\nBody text.\n";
+    expect(extractFirstHeadingText(content)).toBe("Some Other Title");
+  });
+
+  it("returns the heading text unmodified when there is no ADR-NNN prefix", () => {
+    const content = "# auth-flow decisions\n\nD-auth: We use JWT.\n";
+    expect(extractFirstHeadingText(content)).toBe("auth-flow decisions");
+  });
+
+  it("returns null when the content has no heading line at all", () => {
+    const content = "Just a paragraph of text.\nAnother line, still no heading.\n";
+    expect(extractFirstHeadingText(content)).toBeNull();
+  });
+
+  it("uses only the FIRST heading line when multiple headings exist", () => {
+    const content = "# ADR-001: First Title\n\n## Second Heading\n\nBody.\n";
+    expect(extractFirstHeadingText(content)).toBe("First Title");
+  });
+});
+
+describe("collectConcernCandidates", () => {
+  it("passes feature directory names through verbatim", () => {
+    const result = collectConcernCandidates({
+      featureDirectoryNames: ["auth-flow", "rate-limiting"],
+      adrFiles: [],
+      featureFiles: [],
+    });
+    expect(result).toEqual(["auth-flow", "rate-limiting"]);
+  });
+
+  it("extracts the ADR title with the ADR-NNN: prefix stripped", () => {
+    const result = collectConcernCandidates({
+      featureDirectoryNames: [],
+      adrFiles: [
+        {
+          sourceFile: "docs/product/architecture/adr-005-concern-matching-strategy.md",
+          content: "# ADR-005: Concern Matching Strategy\n\nWe use keyword matching.\n",
+        },
+      ],
+      featureFiles: [],
+    });
+    expect(result).toEqual(["Concern Matching Strategy"]);
+  });
+
+  it("falls back to a filename-derived candidate when the ADR file has no heading", () => {
+    const result = collectConcernCandidates({
+      featureDirectoryNames: [],
+      adrFiles: [
+        {
+          sourceFile: "docs/product/architecture/adr-005-concern-matching-strategy.md",
+          content: "No heading here, just prose about the decision.\n",
+        },
+      ],
+      featureFiles: [],
+    });
+    expect(result).toEqual(["concern-matching-strategy"]);
+  });
+
+  it("extracts heading text from feature files for every detected heading line", () => {
+    const result = collectConcernCandidates({
+      featureDirectoryNames: [],
+      adrFiles: [],
+      featureFiles: [
+        {
+          sourceFile: "docs/feature/auth-flow/design/wave-decisions.md",
+          phase: "design",
+          content: "# auth-flow decisions\n\nD-auth: We use JWT.\n\n## Token Expiry\n\nDetails.\n",
+        },
+      ],
+    });
+    expect(result).toEqual(["auth-flow decisions", "Token Expiry"]);
+  });
+
+  it("returns the flat concatenation in order: dir names, then ADR titles, then feature-file headings", () => {
+    const result = collectConcernCandidates({
+      featureDirectoryNames: ["auth-flow"],
+      adrFiles: [
+        {
+          sourceFile: "docs/product/architecture/adr-005-concern-matching-strategy.md",
+          content: "# ADR-005: Concern Matching Strategy\n\nBody.\n",
+        },
+      ],
+      featureFiles: [
+        {
+          sourceFile: "docs/feature/auth-flow/design/wave-decisions.md",
+          phase: "design",
+          content: "# auth-flow decisions\n\nBody.\n",
+        },
+      ],
+    });
+    expect(result).toEqual(["auth-flow", "Concern Matching Strategy", "auth-flow decisions"]);
+  });
+
+  it("does NOT deduplicate -- duplicate signals in the input remain duplicated in this function's own output", () => {
+    const result = collectConcernCandidates({
+      featureDirectoryNames: ["rate-limiting", "rate-limiting"],
+      adrFiles: [],
+      featureFiles: [],
+    });
+    expect(result).toEqual(["rate-limiting", "rate-limiting"]);
   });
 });
