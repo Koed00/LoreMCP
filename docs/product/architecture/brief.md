@@ -17,7 +17,8 @@ Capabilities (from US-01..US-05 + US-CBQ-01..US-CBQ-04):
 - `list_features(repo_name)` -- enumerate `docs/feature/*/` and phase subdirectories for a configured repo, plus `has_architecture_adrs`/`has_claude_md` flags.
 - `query_context(repo_name, feature_id)` -- return live-read snippets from wave-decisions/feature-delta, ADRs, and/or CLAUDE.md, each with `source_file`, `phase`, `snippet`, plus `retrieved_at` and a `warnings` array for partial structure.
 - `resolve_concern(concern)` -- keyword-search ALL configured repos for nWave artifacts (wave-decisions.md, feature-delta.md, ADRs, CLAUDE.md) mentioning the concern topic. Returns `matches` (with `repo_name`, `source_file`, `phase`, `snippet`, `relevance` tier), `rejected_paths` (rejection clauses near the concern keyword), and `warnings` (skipped repos, partial-structure notices). No `repo_name` parameter -- the whole point is the caller does not know which repo owns the concern.
-- Structured errors only: `REPO_NOT_CONFIGURED`, `REPO_PATH_NOT_FOUND`, `FEATURE_NOT_FOUND`, `NO_NWAVE_STRUCTURE`, `CONCERN_NOT_FOUND`, `INVALID_CONCERN` -- never raw exceptions.
+- `list_concerns()` (no arguments, `list-concerns` feature) -- scans ALL configured repos and returns candidate concern/topic strings (feature directory names, ADR titles, heading text within wave-decisions.md/ADR files), deduplicated, capped at 200 entries with a truncation warning if more exist, plus `searched_repos`. Closes the "agent must already know the keyword" gap that `resolve_concern` alone cannot close -- a browse-before-you-query step. Never returns an ERROR shape for the all-repos-structureless case (success with `concerns: []`); structureless repos are silently excluded from contributing candidates, same per-repo skip philosophy as `resolve_concern`.
+- Structured errors only: `REPO_NOT_CONFIGURED`, `REPO_PATH_NOT_FOUND`, `FEATURE_NOT_FOUND`, `NO_NWAVE_STRUCTURE`, `CONCERN_NOT_FOUND`, `INVALID_CONCERN` -- never raw exceptions. `list_concerns()` introduces NO new error shape (binding DISCUSS decision).
 
 Out of scope (confirmed, do not build): ownership/boundary mapping, CLAUDE.md auto-injection, caching/invalidation, semantic/vector search.
 
@@ -216,9 +217,9 @@ C4Container
   Rel(formatter, mcpserver, "Returns shaped JSON response to")
 ```
 
-#### 5.3 Component (L3) -- concern-based-querying addition
+#### 5.3 Component (L3) -- concern-based-querying addition (extended for heading-anchored-snippets and list-concerns)
 
-With `resolve_concern` added, the `src/core/` layer now has 3 modules and the `src/shell/` layer has 4 modules, crossing the threshold for an L3 diagram to show the new component and its relationships.
+With `resolve_concern` added, the `src/core/` layer now has 3 modules and the `src/shell/` layer has 4 modules, crossing the threshold for an L3 diagram to show the new component and its relationships. `heading-anchored-snippets` and `list-concerns` both extend the EXISTING `concern-matcher.ts` component (new exported functions) without changing module count or topology -- no new component box, no new relationship arrow for either feature.
 
 ```mermaid
 C4Component
@@ -227,7 +228,7 @@ C4Component
   Person(agent, "AI Coding Agent", "Claude Code")
 
   Container_Boundary(shell, "src/shell/ (imperative shell -- IO only)") {
-    Component(server, "server.ts", "TypeScript, @modelcontextprotocol/sdk", "Registers list_features / query_context / resolve_concern tools; orchestrates shell→core→shell→formatter pipeline; converts camelCase to snake_case for MCP JSON contract")
+    Component(server, "server.ts", "TypeScript, @modelcontextprotocol/sdk", "Registers list_features / query_context / resolve_concern / list_concerns tools; orchestrates shell→core→shell→formatter pipeline; converts camelCase to snake_case for MCP JSON contract")
     Component(configloader, "config-loader.ts", "TypeScript, node:fs", "Loads and validates lore-mcp.config.json into RepoEntry[]; called fresh on every tool invocation (ADR-004)")
     Component(fsdoctreereader, "fs-doc-tree-reader.ts", "TypeScript, node:fs", "Implements DocTreeReader: probe / listDir / readFile / pathExists -- the ONLY module that imports node:fs")
   }
@@ -235,13 +236,13 @@ C4Component
   Container_Boundary(core, "src/core/ (functional core -- pure functions, zero IO)") {
     Component(classifystructure, "classify-structure.ts", "TypeScript (pure)", "classifyStructure: given TreeSnapshot + feature_id, returns filesToRead + outcome + warnings. classifyRepoForListFeatures: returns feature list + flags. TreeSnapshot type shared with shell.")
     Component(formatresponse, "format-response.ts", "TypeScript (pure)", "Shapes all response and error types: QueryContextResponse, ListFeaturesResponse, ResolveConcernResponse, ConcernNotFoundError, InvalidConcernError, StructuredError union. Formatters: formatQueryContextResponse, formatListFeaturesResponse, formatResolveConcernResponse, formatInvalidConcern, formatConcernNotFound.")
-    Component(concernmatcher, "concern-matcher.ts", "TypeScript (pure)", "validateConcern: checks non-empty + alphanumeric. matchConcernInSnapshot: case-insensitive keyword scan over pre-read file contents + feature directory names; returns ConcernMatch[] ranked by relevance tier + RejectedPath[]. detectRejectedPaths: paragraph-granularity rejection keyword detection. extractHeadingAnchoredSnippet (heading-anchored-snippets feature): narrows ConcernMatch.snippet to the heading-anchored section containing the highest-density match; returns null for headingless files, signaling fallback to whole-file truncation (ADR-006).")
+    Component(concernmatcher, "concern-matcher.ts", "TypeScript (pure)", "validateConcern: checks non-empty + alphanumeric. matchConcernInSnapshot: case-insensitive keyword scan over pre-read file contents + feature directory names; returns ConcernMatch[] ranked by relevance tier + RejectedPath[]. detectRejectedPaths: paragraph-granularity rejection keyword detection. extractHeadingAnchoredSnippet (heading-anchored-snippets feature): narrows ConcernMatch.snippet to the heading-anchored section containing the highest-density match; returns null for headingless files, signaling fallback to whole-file truncation (ADR-006). collectConcernCandidates (list-concerns feature): per-repo extraction of candidate topic strings from feature directory names, ADR titles (via extractFirstHeadingText, filename-fallback if headingless), and feature-file heading text -- reuses the same detectHeadingLines/HEADING_PATTERN machinery as extractHeadingAnchoredSnippet; cross-repo dedup + 200-cap applied at the server.ts call site, not inside this function.")
   }
 
   ContainerDb(configfile, "lore-mcp.config.json", "JSON file", "List of {repo-name, doc-path} entries")
   ContainerDb(repodocs, "Configured repos' docs/", "Filesystem", "wave-decisions.md, ADRs, CLAUDE.md per repo")
 
-  Rel(agent, server, "Calls resolve_concern(concern) / list_features(repo_name) / query_context(repo_name, feature_id) via MCP/stdio")
+  Rel(agent, server, "Calls resolve_concern(concern) / list_features(repo_name) / query_context(repo_name, feature_id) / list_concerns() via MCP/stdio")
   Rel(server, configloader, "Loads config via")
   Rel(configloader, configfile, "Reads live from")
   Rel(server, fsdoctreereader, "Probes doc_path and reads files via")
@@ -316,6 +317,7 @@ No proprietary technology anywhere in the stack.
   - `list_features(repo_name: string)` -> `{repo_name, doc_path, features: [{feature_id, phases: string[]}], has_architecture_adrs: boolean, has_claude_md: boolean}` | or one of the structured error shapes
   - `query_context(repo_name: string, feature_id: string)` -> `{repo_name, feature_id, results: [{source_file, phase, snippet}], retrieved_at: string, warnings?: string[]}` | or one of the structured error shapes
   - `resolve_concern(concern: string)` -> `{concern, matches: [{repo_name, source_file, phase, snippet, relevance}], rejected_paths: [{repo_name, source_file, snippet, type}], warnings?: string[], retrieved_at: string}` | `CONCERN_NOT_FOUND` | `INVALID_CONCERN`
+  - `list_concerns()` (no arguments) -> `{concerns: string[], searched_repos: string[], warnings?: string[]}` -- ALWAYS a success shape, never an error, even when `concerns` is empty (all configured repos lack nWave structure). `concerns` is deduplicated (exact-string match) and capped at 200 entries (first 200 in repo-config order); exceeding the cap adds a truncation `warnings` entry. Candidate sources: feature directory names (verbatim), ADR titles (first heading text, or filename-derived if the ADR has no heading), and heading text within feature files (wave-decisions.md/feature-delta.md). `CLAUDE.md` is NOT a candidate source.
 - **Error shapes** (all 6, SCREAMING_SNAKE_CASE `error` field):
   - `REPO_NOT_CONFIGURED`: `{error, repo_name, message, available_repos: string[]}`
   - `REPO_PATH_NOT_FOUND`: `{error, repo_name, configured_path, message, available_repos: string[]}`
@@ -323,6 +325,7 @@ No proprietary technology anywhere in the stack.
   - `NO_NWAVE_STRUCTURE`: `{error, repo_name, configured_path, message}`
   - `CONCERN_NOT_FOUND`: `{error, concern, message, searched_repos: string[], warnings?: string[], retrieved_at: string}` -- `searched_repos` lists only repos where the probe succeeded; skipped repos appear in `warnings`.
   - `INVALID_CONCERN`: `{error, concern, message, retrieved_at: string}` -- returned immediately (before any config load or fs access) for empty, whitespace-only, or non-alphanumeric concern strings.
+  - `list_concerns()` has NO structured error of its own (binding DISCUSS decision) -- a repo lacking nWave structure is silently excluded from contributing candidates (never causes the whole call to error); if ALL repos lack structure, the response is still success-shaped with `concerns: []` and `searched_repos` populated.
 - **No caching, no network, no DB** -- every call re-reads config + filesystem live (ADR-004).
 - **External integrations**: NONE detected. Sibling repo filesystems are local read-only inputs, not API partners -- no contract testing required.
 
@@ -365,6 +368,7 @@ Per Principle 12, the `DocTreeReader` adapter (the one shell module that touches
 - `adr-004-no-caching-live-read.md` -- live filesystem reads, no caching layer
 - `adr-005-concern-matching-strategy.md` -- keyword matching for resolve_concern (concern-based-querying feature)
 - `adr-006-heading-boundary-parsing-strategy.md` -- regex-based heading-boundary parsing for snippet narrowing (heading-anchored-snippets feature)
+- No new ADR for `list-concerns` -- the only genuine alternatives-with-trade-offs decision (where the aggregation function lives) is recorded as an "Approach Decision" inside `docs/feature/list-concerns/design/architecture-design.md`, since it is a module-placement decision, not a new architectural-style/technology/enforcement-boundary decision. See `docs/feature/list-concerns/design/wave-decisions.md` D-LC-DESIGN-4.
 
 ---
 
@@ -381,4 +385,5 @@ Per Principle 12, the `DocTreeReader` adapter (the one shell module that touches
 - [x] AC behavioral, not implementation-coupled (response-shape based, per Section 8 and architecture-design.md; US-HAS-01 ACs verified via snippet content, not internal parsing method)
 - [x] External integrations: NONE -- explicitly stated, no contract-test annotation needed
 - [x] Architectural enforcement tooling recommended: `dependency-cruiser` (Section 6, Section 9); no new rules required for `extractHeadingAnchoredSnippet` (existing `core/**` rule covers it)
-- [x] Probe contracts specified for the sole external dependency (filesystem) -- Section 9; no new probe scenarios for heading-anchored-snippets (pure function over already-read content, no new substrate dependency)
+- [x] Probe contracts specified for the sole external dependency (filesystem) -- Section 9; no new probe scenarios for heading-anchored-snippets (pure function over already-read content, no new substrate dependency); no new probe scenarios for list-concerns either -- `list_concerns()` reuses the EXACT same `reader.probe()` call and skip-on-failure semantics already gold-tested for `resolve_concern` (see `docs/feature/list-concerns/design/architecture-design.md` "Earned Trust" section)
+- [x] list-concerns (DESIGN wave): 4th tool contract documented (Section 1, Section 8); Reuse Analysis in `docs/feature/list-concerns/design/wave-decisions.md`; README update flagged as part of this feature's delivery (`docs/feature/list-concerns/design/architecture-design.md` Changes Per File table) -- not deferred to a later wave

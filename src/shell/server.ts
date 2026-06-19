@@ -352,5 +352,20 @@ export function createServer(options: CreateServerOptions): McpServer {
     },
   );
 
+  // RED scaffold (DISTILL, list-concerns feature) -- replaced with real
+  // implementation in DELIVER step 01-01. See
+  // docs/feature/list-concerns/design/architecture-design.md.
+  server.registerTool(
+    "list_concerns",
+    {
+      description:
+        "Scan all configured repos for candidate concern/topic strings (feature directory names, ADR titles, decision heading text) an agent can browse before calling resolve_concern. No arguments.",
+      inputSchema: {},
+    },
+    async () => {
+      return toToolResult({ error: "NOT_IMPLEMENTED", message: "list_concerns is not yet implemented." });
+    },
+  );
+
   return server;
 }
