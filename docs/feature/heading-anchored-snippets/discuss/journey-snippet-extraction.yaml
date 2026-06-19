@@ -1,0 +1,44 @@
+schema_version: 1
+journey_id: snippet-extraction
+maps_to_jobs:
+  - cross-repo-context-grounding
+steps:
+  - step: 1
+    actor: "AI coding agent"
+    action: "Calls resolve_concern(concern)"
+    tool_behavior: "Scans configured repos for matches (unchanged)"
+    output: "List of candidate matched files"
+  - step: 2
+    actor: "tool"
+    action: "Locate matched section within each file"
+    tool_behavior: "NEW: finds paragraph/section containing the concern keyword"
+    output: "internal section boundaries"
+  - step: 3
+    actor: "tool"
+    action: "Extract heading-anchored section"
+    tool_behavior: "NEW: extract from nearest preceding heading to next heading of equal-or-higher level, cap 1500-8000 chars"
+    output: "ConcernMatch.snippet narrowed to relevant section"
+  - step: 4
+    actor: "AI coding agent"
+    action: "Reads the match"
+    output: "agent judges relevance from narrowed snippet alone"
+  - step: 5
+    actor: "AI coding agent"
+    action: "Acts on the decision"
+    output: "no re-read of source file required"
+error_paths:
+  - condition: "file has no markdown headings"
+    behavior: "fall back to whole-file-up-to-cap (today's behavior)"
+  - condition: "concern keyword appears in multiple sections"
+    behavior: "OPEN - flagged for DESIGN wave"
+  - condition: "concern keyword appears in a heading"
+    behavior: "extract section starting at that heading"
+  - condition: "extracted section exceeds cap"
+    behavior: "truncate within section, reuse existing truncation-warning mechanism"
+shared_artifacts:
+  - name: concern
+    type: string
+    source: "agent MCP call argument (unchanged)"
+  - name: ConcernMatch.snippet
+    type: string
+    source: "new heading-anchored extraction function in src/core/concern-matcher.ts"

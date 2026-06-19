@@ -117,6 +117,22 @@ Out of scope (confirmed, do not build): ownership/boundary mapping, CLAUDE.md au
 
 **ALTERNATIVES CONSIDERED**: heading-based extraction and text-search-based extraction (both rejected as reintroducing heuristic indexing that D-docquality REVISED explicitly scoped out, and both expand the error/warning surface beyond the agreed taxonomy).
 
+**UPDATE (heading-anchored-snippets feature, DESIGN wave)**: the above rejection of
+heading-based extraction applied to `query_context`'s whole-file-return philosophy and
+remains correct for that tool -- `query_context` still returns whole-file content per
+Decision 4's path-convention-based relevance model. However, `resolve_concern` (added in
+the `concern-based-querying` feature, after this Decision 4 text was written) inverted the
+relevance model: the caller supplies a free-text concern, not a path, so the snippet for a
+KEYWORD MATCH benefits from narrowing to the matched section once a multi-section file
+produces noisy whole-file output in practice (observed via live dogfooding). This is
+**not** a reversal of Decision 4 -- it is a `resolve_concern`-only refinement, layered on
+top of ADR-005's keyword-matching strategy, governed by `adr-006-heading-boundary-parsing-strategy.md`.
+`ConcernMatch.snippet` semantics are updated: previously "whole-file content, capped at
+8000 chars, heading-aligned truncation"; now "the heading-anchored section containing the
+highest-density match, capped at 8000 chars via the same existing truncation mechanism if
+oversized -- OR whole-file content unchanged if the file has no markdown headings." See
+Section 5.3 (updated) and `docs/feature/heading-anchored-snippets/design/architecture-design.md`.
+
 ---
 
 #### Decision 5 -- Phase/Feature Discovery Mechanism
@@ -219,7 +235,7 @@ C4Component
   Container_Boundary(core, "src/core/ (functional core -- pure functions, zero IO)") {
     Component(classifystructure, "classify-structure.ts", "TypeScript (pure)", "classifyStructure: given TreeSnapshot + feature_id, returns filesToRead + outcome + warnings. classifyRepoForListFeatures: returns feature list + flags. TreeSnapshot type shared with shell.")
     Component(formatresponse, "format-response.ts", "TypeScript (pure)", "Shapes all response and error types: QueryContextResponse, ListFeaturesResponse, ResolveConcernResponse, ConcernNotFoundError, InvalidConcernError, StructuredError union. Formatters: formatQueryContextResponse, formatListFeaturesResponse, formatResolveConcernResponse, formatInvalidConcern, formatConcernNotFound.")
-    Component(concernmatcher, "concern-matcher.ts", "TypeScript (pure)", "NEW. validateConcern: checks non-empty + alphanumeric. matchConcernInSnapshot: case-insensitive keyword scan over pre-read file contents + feature directory names; returns ConcernMatch[] ranked by relevance tier + RejectedPath[]. detectRejectedPaths: paragraph-granularity rejection keyword detection.")
+    Component(concernmatcher, "concern-matcher.ts", "TypeScript (pure)", "validateConcern: checks non-empty + alphanumeric. matchConcernInSnapshot: case-insensitive keyword scan over pre-read file contents + feature directory names; returns ConcernMatch[] ranked by relevance tier + RejectedPath[]. detectRejectedPaths: paragraph-granularity rejection keyword detection. extractHeadingAnchoredSnippet (heading-anchored-snippets feature): narrows ConcernMatch.snippet to the heading-anchored section containing the highest-density match; returns null for headingless files, signaling fallback to whole-file truncation (ADR-006).")
   }
 
   ContainerDb(configfile, "lore-mcp.config.json", "JSON file", "List of {repo-name, doc-path} entries")
@@ -348,20 +364,21 @@ Per Principle 12, the `DocTreeReader` adapter (the one shell module that touches
 - `adr-003-snippet-extraction-approach.md` -- whole-file-with-truncation extraction strategy
 - `adr-004-no-caching-live-read.md` -- live filesystem reads, no caching layer
 - `adr-005-concern-matching-strategy.md` -- keyword matching for resolve_concern (concern-based-querying feature)
+- `adr-006-heading-boundary-parsing-strategy.md` -- regex-based heading-boundary parsing for snippet narrowing (heading-anchored-snippets feature)
 
 ---
 
 ### 11. Quality Gate Self-Check
 
-- [x] Requirements traced to components (Section 4-6 map to US-01..US-05; concern-based-querying extension maps to US-CBQ-01..US-CBQ-04 via architecture-design.md Changes Per File table)
+- [x] Requirements traced to components (Section 4-6 map to US-01..US-05; concern-based-querying extension maps to US-CBQ-01..US-CBQ-04; heading-anchored-snippets maps to US-HAS-01 ACs 1-5 via `docs/feature/heading-anchored-snippets/design/architecture-design.md` Changes Per File table)
 - [x] Component boundaries with clear responsibilities (Section 5.2, Section 5.3, Section 6)
-- [x] Technology choices in ADRs with alternatives (Section 10, ADR files -- ADR-005 added)
+- [x] Technology choices in ADRs with alternatives (Section 10, ADR files -- ADR-005, ADR-006 added)
 - [x] Quality attributes addressed: maintainability/testability (Section 6), reliability via structured errors (Section 8), performance N/A documented (local fs reads, no perf NFR), security N/A (read-only, local, no auth surface)
-- [x] Dependency-inversion compliance: core has zero IO imports, enforced via dependency-cruiser (Section 6, Section 9); `concern-matcher.ts` is pure by same rule
-- [x] C4 diagrams: L1 + L2 in Mermaid (Section 5.1, 5.2); L3 added for concern-based-querying (Section 5.3, 3 core modules + 3 shell modules)
-- [x] Integration patterns specified (Section 8) -- `resolve_concern` contract added
-- [x] OSS preference validated -- all choices MIT/Apache 2.0 (Section 7); no new dependencies added
-- [x] AC behavioral, not implementation-coupled (response-shape based, per Section 8 and architecture-design.md)
+- [x] Dependency-inversion compliance: core has zero IO imports, enforced via dependency-cruiser (Section 6, Section 9); `concern-matcher.ts` is pure by same rule, including new `extractHeadingAnchoredSnippet`
+- [x] C4 diagrams: L1 + L2 in Mermaid (Section 5.1, 5.2); L3 updated for heading-anchored-snippets (Section 5.3, `concern-matcher.ts` component note extended -- no new component, no topology change)
+- [x] Integration patterns specified (Section 8) -- `resolve_concern` contract unchanged in shape; `ConcernMatch.snippet` semantics updated (Decision 4 note)
+- [x] OSS preference validated -- all choices MIT/Apache 2.0 (Section 7); no new dependencies added (ADR-006 explicitly rejects a markdown-AST library)
+- [x] AC behavioral, not implementation-coupled (response-shape based, per Section 8 and architecture-design.md; US-HAS-01 ACs verified via snippet content, not internal parsing method)
 - [x] External integrations: NONE -- explicitly stated, no contract-test annotation needed
-- [x] Architectural enforcement tooling recommended: `dependency-cruiser` (Section 6, Section 9); no new rules required for concern-matcher (existing `core/**` rule covers it)
-- [x] Probe contracts specified for the sole external dependency (filesystem) -- Section 9; no new probe scenarios for resolve_concern (reuses existing DocTreeReader.probe() per-repo)
+- [x] Architectural enforcement tooling recommended: `dependency-cruiser` (Section 6, Section 9); no new rules required for `extractHeadingAnchoredSnippet` (existing `core/**` rule covers it)
+- [x] Probe contracts specified for the sole external dependency (filesystem) -- Section 9; no new probe scenarios for heading-anchored-snippets (pure function over already-read content, no new substrate dependency)

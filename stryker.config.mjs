@@ -3,6 +3,7 @@ export default {
   mutate: [
     "src/core/classify-structure.ts",
     "src/core/format-response.ts",
+    "src/core/concern-matcher.ts",
   ],
   testRunner: "vitest",
   vitest: {

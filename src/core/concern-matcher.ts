@@ -98,6 +98,165 @@ function splitIntoParagraphs(content: string): string[] {
   return content.split(/\n\n+/).filter((p) => p.trim().length > 0);
 }
 
+const HEADING_PATTERN = /^(#{1,6})\s/;
+
+interface HeadingLine {
+  lineIndex: number;
+  level: number;
+}
+
+function detectHeadingLines(lines: string[]): HeadingLine[] {
+  const headings: HeadingLine[] = [];
+  lines.forEach((line, lineIndex) => {
+    const match = line.match(HEADING_PATTERN);
+    const hashes = match?.[1];
+    if (hashes) {
+      headings.push({ lineIndex, level: hashes.length });
+    }
+  });
+  return headings;
+}
+
+function findSectionEnd(headings: HeadingLine[], sectionStartIndex: number, totalLines: number): number {
+  const currentHeading = headings[sectionStartIndex];
+  if (!currentHeading) {
+    return totalLines;
+  }
+  for (let i = sectionStartIndex + 1; i < headings.length; i++) {
+    const candidate = headings[i];
+    if (candidate && candidate.level <= currentHeading.level) {
+      return candidate.lineIndex;
+    }
+  }
+  return totalLines;
+}
+
+interface Section {
+  text: string;
+  ownText: string;
+  startLineIndex: number;
+  endLineIndex: number;
+}
+
+function findFirstChildHeadingLineIndex(
+  headings: HeadingLine[],
+  sectionStartIndex: number,
+): number | null {
+  const currentHeading = headings[sectionStartIndex];
+  const nextHeading = headings[sectionStartIndex + 1];
+  if (!currentHeading || !nextHeading) {
+    return null;
+  }
+  return nextHeading.level > currentHeading.level ? nextHeading.lineIndex : null;
+}
+
+function partitionIntoSections(content: string): Section[] {
+  const lines = content.split("\n");
+  const headings = detectHeadingLines(lines);
+
+  return headings.map((heading, index) => {
+    const endLineIndex = findSectionEnd(headings, index, lines.length);
+    const firstChildLineIndex = findFirstChildHeadingLineIndex(headings, index);
+    const ownTextEndLineIndex = firstChildLineIndex ?? endLineIndex;
+    return {
+      text: lines.slice(heading.lineIndex, endLineIndex).join("\n"),
+      ownText: lines.slice(heading.lineIndex, ownTextEndLineIndex).join("\n"),
+      startLineIndex: heading.lineIndex,
+      endLineIndex,
+    };
+  });
+}
+
+function isStructuralAncestor(candidate: Section, other: Section): boolean {
+  return (
+    candidate.startLineIndex <= other.startLineIndex &&
+    candidate.endLineIndex >= other.endLineIndex &&
+    !(candidate.startLineIndex === other.startLineIndex && candidate.endLineIndex === other.endLineIndex)
+  );
+}
+
+interface SectionOccurrence {
+  occurrenceCount: number;
+  sectionIndex: number;
+}
+
+function excludeStructuralAncestors(
+  candidates: SectionOccurrence[],
+  sections: Section[],
+  concern: string,
+): SectionOccurrence[] {
+  return candidates.filter((candidate) => {
+    const candidateSection = sections[candidate.sectionIndex];
+    if (!candidateSection) {
+      return false;
+    }
+    const isPureAncestor = candidates.some((other) => {
+      if (other.sectionIndex === candidate.sectionIndex) {
+        return false;
+      }
+      const otherSection = sections[other.sectionIndex];
+      if (!otherSection) {
+        return false;
+      }
+      return isStructuralAncestor(candidateSection, otherSection);
+    });
+    if (!isPureAncestor) {
+      return true;
+    }
+    // An ancestor only loses to its descendants when ALL of its matches come
+    // from nested content -- if the concern also appears in the ancestor's
+    // own text (outside any child heading), it remains a legitimate candidate.
+    return countOccurrences(candidateSection.ownText, concern) > 0;
+  });
+}
+
+function countOccurrences(text: string, concern: string): number {
+  const lowerText = text.toLowerCase();
+  const lowerConcern = concern.toLowerCase();
+  if (lowerConcern.length === 0) {
+    return 0;
+  }
+
+  let count = 0;
+  let searchFrom = 0;
+  let foundIndex = lowerText.indexOf(lowerConcern, searchFrom);
+  while (foundIndex !== -1) {
+    count += 1;
+    searchFrom = foundIndex + lowerConcern.length;
+    foundIndex = lowerText.indexOf(lowerConcern, searchFrom);
+  }
+  return count;
+}
+
+export function extractHeadingAnchoredSnippet(content: string, concern: string): string | null {
+  const sections = partitionIntoSections(content);
+  if (sections.length === 0) {
+    return null;
+  }
+
+  const sectionOccurrenceCounts = sections.map((section) => countOccurrences(section.text, concern));
+  const matchingSectionIndexes = sectionOccurrenceCounts
+    .map((occurrenceCount, sectionIndex) => ({ occurrenceCount, sectionIndex }))
+    .filter(({ occurrenceCount }) => occurrenceCount > 0);
+
+  if (matchingSectionIndexes.length === 0) {
+    return null;
+  }
+
+  const candidatesExcludingAncestors = excludeStructuralAncestors(matchingSectionIndexes, sections, concern);
+
+  if (candidatesExcludingAncestors.length === 1) {
+    const onlyCandidate = candidatesExcludingAncestors[0];
+    return onlyCandidate ? sections[onlyCandidate.sectionIndex]?.text ?? null : null;
+  }
+
+  const mostDenseSection = candidatesExcludingAncestors.reduce((densest, candidate) =>
+    candidate.occurrenceCount > densest.occurrenceCount ? candidate : densest,
+  );
+
+  return sections[mostDenseSection.sectionIndex]?.text ?? null;
+}
+
 // ---------------------------------------------------------------------------
 // Public pure functions
 // ---------------------------------------------------------------------------
@@ -151,7 +310,9 @@ export function matchConcernInSnapshot(input: ConcernScanInput): ConcernScanResu
     const contentMatch = containsConcern(file.content, concern);
 
     if (contentMatch || directoryMatch) {
-      const { snippet, truncated } = capSnippetAtHeadingBoundary(file.content, SNIPPET_MAX_CHARS);
+      const headingAnchored = extractHeadingAnchoredSnippet(file.content, concern);
+      const sourceText = headingAnchored ?? file.content;
+      const { snippet, truncated } = capSnippetAtHeadingBoundary(sourceText, SNIPPET_MAX_CHARS);
       if (truncated) {
         truncationWarnings.push(`${file.sourceFile} was truncated to ${SNIPPET_MAX_CHARS} chars`);
       }
@@ -171,7 +332,9 @@ export function matchConcernInSnapshot(input: ConcernScanInput): ConcernScanResu
   // Architecture-level: ADR content match
   for (const adr of adrFiles) {
     if (containsConcern(adr.content, concern)) {
-      const { snippet, truncated } = capSnippetAtHeadingBoundary(adr.content, SNIPPET_MAX_CHARS);
+      const headingAnchored = extractHeadingAnchoredSnippet(adr.content, concern);
+      const sourceText = headingAnchored ?? adr.content;
+      const { snippet, truncated } = capSnippetAtHeadingBoundary(sourceText, SNIPPET_MAX_CHARS);
       if (truncated) {
         truncationWarnings.push(`${adr.sourceFile} was truncated to ${SNIPPET_MAX_CHARS} chars`);
       }
@@ -190,7 +353,9 @@ export function matchConcernInSnapshot(input: ConcernScanInput): ConcernScanResu
 
   // Repo-conventions: CLAUDE.md match
   if (claudeMdFile !== null && containsConcern(claudeMdFile.content, concern)) {
-    const { snippet, truncated } = capSnippetAtHeadingBoundary(claudeMdFile.content, SNIPPET_MAX_CHARS);
+    const headingAnchored = extractHeadingAnchoredSnippet(claudeMdFile.content, concern);
+    const sourceText = headingAnchored ?? claudeMdFile.content;
+    const { snippet, truncated } = capSnippetAtHeadingBoundary(sourceText, SNIPPET_MAX_CHARS);
     if (truncated) {
       truncationWarnings.push(`${claudeMdFile.sourceFile} was truncated to ${SNIPPET_MAX_CHARS} chars`);
     }
