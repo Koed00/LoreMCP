@@ -80,6 +80,51 @@ describe("extractHeadingAnchoredSnippet", () => {
     expect(result).not.toContain("## D-2: monitoring");
   });
 
+  it("excludes a top-level title heading's section when the concern only matches a nested subsection", () => {
+    const content = [
+      "# Wave Decisions -- DESIGN (platform)",
+      "",
+      "## D-1: deployment target",
+      "",
+      "We deploy via Docker Compose on a single host.",
+      "",
+      "## D-2: logging format",
+      "",
+      "We emit structured JSON logs to stdout for logging consistency.",
+      "",
+      "## D-3: monitoring",
+      "",
+      "We use Prometheus for metrics collection.",
+    ].join("\n");
+
+    const result = extractHeadingAnchoredSnippet(content, "logging");
+
+    expect(result).not.toBeNull();
+    expect(result).toContain("## D-2: logging format");
+    expect(result).not.toContain("## D-1: deployment target");
+    expect(result).not.toContain("## D-3: monitoring");
+    expect(result!.trim().startsWith("# Wave Decisions -- DESIGN (platform)")).toBe(false);
+  });
+
+  it("still applies density tie-break among unrelated sibling sections (no ancestor relationship)", () => {
+    const content = [
+      "## D-1: rate-limiting strategy",
+      "",
+      "rate-limiting is applied at the gateway. rate-limiting uses a token",
+      "bucket algorithm. rate-limiting thresholds are configurable per route.",
+      "",
+      "## D-2: monitoring",
+      "",
+      "We also reference rate-limiting briefly here for context on alerts.",
+    ].join("\n");
+
+    const result = extractHeadingAnchoredSnippet(content, "rate-limiting");
+
+    expect(result).not.toBeNull();
+    expect(result).toContain("## D-1: rate-limiting strategy");
+    expect(result).not.toContain("## D-2: monitoring");
+  });
+
   it("returns null when no section contains a match (defensive case)", () => {
     const content = [
       "## D-1: deployment target",

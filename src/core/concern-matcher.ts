@@ -131,13 +131,77 @@ function findSectionEnd(headings: HeadingLine[], sectionStartIndex: number, tota
   return totalLines;
 }
 
-function partitionIntoSections(content: string): string[] {
+interface Section {
+  text: string;
+  ownText: string;
+  startLineIndex: number;
+  endLineIndex: number;
+}
+
+function findFirstChildHeadingLineIndex(
+  headings: HeadingLine[],
+  sectionStartIndex: number,
+): number | null {
+  const currentHeading = headings[sectionStartIndex];
+  const nextHeading = headings[sectionStartIndex + 1];
+  if (!currentHeading || !nextHeading) {
+    return null;
+  }
+  return nextHeading.level > currentHeading.level ? nextHeading.lineIndex : null;
+}
+
+function partitionIntoSections(content: string): Section[] {
   const lines = content.split("\n");
   const headings = detectHeadingLines(lines);
 
   return headings.map((heading, index) => {
     const endLineIndex = findSectionEnd(headings, index, lines.length);
-    return lines.slice(heading.lineIndex, endLineIndex).join("\n");
+    const firstChildLineIndex = findFirstChildHeadingLineIndex(headings, index);
+    const ownTextEndLineIndex = firstChildLineIndex ?? endLineIndex;
+    return {
+      text: lines.slice(heading.lineIndex, endLineIndex).join("\n"),
+      ownText: lines.slice(heading.lineIndex, ownTextEndLineIndex).join("\n"),
+      startLineIndex: heading.lineIndex,
+      endLineIndex,
+    };
+  });
+}
+
+function isStructuralAncestor(candidate: Section, other: Section): boolean {
+  return (
+    candidate.startLineIndex <= other.startLineIndex &&
+    candidate.endLineIndex >= other.endLineIndex &&
+    !(candidate.startLineIndex === other.startLineIndex && candidate.endLineIndex === other.endLineIndex)
+  );
+}
+
+function excludeStructuralAncestors<T extends { sectionIndex: number }>(
+  candidates: T[],
+  sections: Section[],
+  concern: string,
+): T[] {
+  return candidates.filter((candidate) => {
+    const candidateSection = sections[candidate.sectionIndex];
+    if (!candidateSection) {
+      return false;
+    }
+    const isPureAncestor = candidates.some((other) => {
+      if (other.sectionIndex === candidate.sectionIndex) {
+        return false;
+      }
+      const otherSection = sections[other.sectionIndex];
+      if (!otherSection) {
+        return false;
+      }
+      return isStructuralAncestor(candidateSection, otherSection);
+    });
+    if (!isPureAncestor) {
+      return true;
+    }
+    // An ancestor only loses to its descendants when ALL of its matches come
+    // from nested content -- if the concern also appears in the ancestor's
+    // own text (outside any child heading), it remains a legitimate candidate.
+    return countOccurrences(candidateSection.ownText, concern) > 0;
   });
 }
 
@@ -165,7 +229,7 @@ export function extractHeadingAnchoredSnippet(content: string, concern: string):
     return null;
   }
 
-  const sectionOccurrenceCounts = sections.map((section) => countOccurrences(section, concern));
+  const sectionOccurrenceCounts = sections.map((section) => countOccurrences(section.text, concern));
   const matchingSectionIndexes = sectionOccurrenceCounts
     .map((occurrenceCount, sectionIndex) => ({ occurrenceCount, sectionIndex }))
     .filter(({ occurrenceCount }) => occurrenceCount > 0);
@@ -174,11 +238,18 @@ export function extractHeadingAnchoredSnippet(content: string, concern: string):
     return null;
   }
 
-  const mostDenseSection = matchingSectionIndexes.reduce((densest, candidate) =>
+  const candidatesExcludingAncestors = excludeStructuralAncestors(matchingSectionIndexes, sections, concern);
+
+  if (candidatesExcludingAncestors.length === 1) {
+    const onlyCandidate = candidatesExcludingAncestors[0];
+    return onlyCandidate ? sections[onlyCandidate.sectionIndex]?.text ?? null : null;
+  }
+
+  const mostDenseSection = candidatesExcludingAncestors.reduce((densest, candidate) =>
     candidate.occurrenceCount > densest.occurrenceCount ? candidate : densest,
   );
 
-  return sections[mostDenseSection.sectionIndex] ?? null;
+  return sections[mostDenseSection.sectionIndex]?.text ?? null;
 }
 
 // ---------------------------------------------------------------------------
