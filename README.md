@@ -1,6 +1,6 @@
 # LoreMCP
 
-A local, read-only MCP server that gives an AI coding agent live access to [nWave](https://github.com/Koed00)-structured documentation from a configured list of sibling repos.
+A local, read-only MCP server that gives an AI coding agent live access to [nWave](https://github.com/nWave-ai/nWave)-structured documentation from a configured list of sibling repos.
 
 **The problem**: AI agents working in a codebase start each session blind. They have no way to query prior architectural decisions, domain constraints, or feature-level context before they act — so they reinvent patterns, contradict last sprint's decisions, or miss domain rules any experienced team member would know.
 
