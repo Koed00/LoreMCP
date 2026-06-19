@@ -224,6 +224,35 @@ LoreMCP is most valuable in the DISCUSS and DESIGN phases of a wave-based workfl
 
 ---
 
+## Enforcing LoreMCP usage across a team
+
+A single developer remembering to prompt their agent is fragile — it doesn't survive onboarding, a busy week, or a different agent session. The reliable fix is to put the instruction where every agent session already looks: the repo's `CLAUDE.md`. Any team lead or devops manager can paste the block below into the project's `CLAUDE.md` once, and every developer's agent picks up the workflow automatically, with no per-prompt reminder needed.
+
+```markdown
+## Cross-Repo Context (LoreMCP)
+
+This repo is part of a multi-repo platform. Before designing or architecting
+any non-trivial feature, use the `lore-mcp` MCP tools to check what's already
+been decided elsewhere — do not assume a clean slate:
+
+1. Call `list_concerns()` to see what topics are already documented across
+   all configured sibling repos.
+2. Call `resolve_concern(concern)` for any topic that overlaps with what
+   you're about to build, to find existing decisions AND rejected
+   alternatives before proposing something new.
+3. Call `query_context(repo_name, feature_id)` once you've found the
+   relevant repo + feature, to read its full decision history.
+
+Do this BEFORE writing an architecture doc, a design proposal, or
+significant new code — not after. If `resolve_concern` surfaces a rejected
+alternative that matches your plan, treat that as a strong signal to
+reconsider, not just a data point to mention in passing.
+```
+
+This works because `CLAUDE.md` is read automatically at the start of every Claude Code session in the repo — the instruction reaches every agent invocation without relying on any individual developer's prompt. If your team uses [nWave](https://github.com/nWave-ai/nWave), this pairs naturally with the existing `## Development Paradigm` convention already documented there.
+
+---
+
 ## Design principles
 
 - **Live reads, no cache** — every tool call reads from disk fresh. Edits to your docs are visible on the very next query, no server restart needed (ADR-004).
