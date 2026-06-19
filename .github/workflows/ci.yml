@@ -28,3 +28,6 @@ jobs:
 
       - name: Mutation testing
         run: npm run test:mutation
+
+      - name: Verify package tarball is buildable (does not publish)
+        run: npm pack --dry-run

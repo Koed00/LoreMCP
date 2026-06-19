@@ -193,6 +193,20 @@ Add to your Claude Code MCP config (`~/.claude/claude_desktop_config.json` or `.
 
 ---
 
+## Using LoreMCP while architecting
+
+LoreMCP is most valuable in the DISCUSS and DESIGN phases of a wave-based workflow (e.g. [nWave](https://github.com/nWave-ai/nWave)) — before code is written, when an agent needs to know what's already been decided elsewhere. `resolve_concern` alone only helps if the agent already knows which keyword to ask about; combine it with `list_features` for a "browse before you query" pass:
+
+1. **Browse**: call `list_features(repo_name)` on each sibling repo you know about to see what topics/features already have documented decisions, before guessing a keyword.
+2. **Search broadly**: call `resolve_concern(concern)` for each topic that might be relevant to what you're about to design (e.g. `"auth"`, `"rate-limiting"`, `"caching"`) — it scans every configured repo, no `repo_name` needed, and surfaces both accepted decisions and rejected alternatives.
+3. **Go deep**: once `resolve_concern` or `list_features` points you to a specific repo + feature, call `query_context(repo_name, feature_id)` for that feature's full decision history across every wave, not just a keyword-matched snippet.
+
+**Example prompt to an agent**: *"Before designing the rate-limiting strategy for this service, use lore-mcp's resolve_concern to check whether any sibling repo has already decided how to do rate-limiting, and check for any rejected alternatives before proposing a new approach."*
+
+**Known gap**: there's currently no way to browse *all* concerns/decision-topics across repos without already knowing keywords to try — `list_features` only enumerates feature directories, not the decision topics buried inside `wave-decisions.md`/ADR files. A future `list_concerns()` tool (browse-before-you-query) is scoped but not yet built — see `docs/feature/heading-anchored-snippets/recommendation.md`'s backlog for the full rationale.
+
+---
+
 ## Design principles
 
 - **Live reads, no cache** — every tool call reads from disk fresh. Edits to your docs are visible on the very next query, no server restart needed (ADR-004).
