@@ -1,0 +1,148 @@
+{
+  "roadmap": {
+    "project_id": "concern-based-querying",
+    "created_at": "2026-06-18T16:32:19Z",
+    "total_steps": 5,
+    "phases": 4
+  },
+  "phases": [
+    {
+      "id": "01",
+      "name": "Walking Skeleton: end-to-end resolve_concern wiring",
+      "steps": [
+        {
+          "id": "01-01",
+          "name": "Wire resolve_concern handler in server.ts with real concern-matcher and format-response",
+          "description": "Replace the NOT_IMPLEMENTED stub in src/shell/server.ts with the full resolve_concern handler: validate concern, probe each repo, read all nWave files via DocTreeReader, call matchConcernInSnapshot, aggregate results, format and return. Imports validateConcern, matchConcernInSnapshot from concern-matcher.ts and formatInvalidConcern, formatConcernNotFound, formatResolveConcernResponse from format-response.ts. Covers all 1 scenario in walking-skeleton.feature. scenario_name is the entry-point scenario; crafter enables it in RED_ACCEPTANCE.",
+          "estimated_hours": 3,
+          "dependencies": [],
+          "files_to_modify": [
+            "src/shell/server.ts",
+            "src/core/concern-matcher.ts",
+            "src/core/format-response.ts"
+          ],
+          "criteria": [
+            "resolve_concern tool is registered and callable over MCP stdio transport",
+            "Given a fixture repo with a feature-level decision file and an ADR both mentioning 'auth', resolve_concern('auth') returns at least one match",
+            "Each match includes a repo_name field identifying its source repo",
+            "retrieved_at is 'live (no cache)' in every response"
+          ],
+          "test_file": "tests/acceptance/concern-based-querying/walking-skeleton.feature",
+          "scenario_name": "Agent resolves a concern and receives authoritative source with live timestamp"
+        }
+      ]
+    },
+    {
+      "id": "02",
+      "name": "Release 1: single-repo keyword matching and input validation",
+      "steps": [
+        {
+          "id": "02-01",
+          "name": "Implement validateConcern in concern-matcher.ts",
+          "description": "Implement the validateConcern pure function: returns { valid: false, reason } when concern is empty after trimming or contains no alphanumeric character (/[a-zA-Z0-9]/ test); returns { valid: true } otherwise. No side effects, no IO. Covers scenarios 6-7 in release-1-single-repo-matching.feature (INVALID_CONCERN for empty string and punctuation-only input). scenario_name is the entry-point; crafter enables remaining INVALID_CONCERN scenario in the same TDD cycle.",
+          "estimated_hours": 1,
+          "dependencies": [],
+          "files_to_modify": [
+            "src/core/concern-matcher.ts"
+          ],
+          "criteria": [
+            "resolve_concern('') returns error INVALID_CONCERN",
+            "resolve_concern('???') returns error INVALID_CONCERN",
+            "Error message explains concern must contain at least one letter or number",
+            "retrieved_at is present on INVALID_CONCERN responses"
+          ],
+          "test_file": "tests/acceptance/concern-based-querying/release-1-single-repo-matching.feature",
+          "scenario_name": "Agent receives invalid input error for an empty concern"
+        },
+        {
+          "id": "02-02",
+          "name": "Implement matchConcernInSnapshot and extend format-response.ts",
+          "description": "Implement matchConcernInSnapshot: case-insensitive substring matching across featureFiles (relevance: feature-level, including directory-name match), adrFiles (relevance: architecture-level), and claudeMdFile (relevance: repo-conventions). Snippet size-capped at 8000 chars with heading-alignment. Ordering: feature-level first, then architecture-level, then repo-conventions. Also add ConcernMatch, RejectedPath, ResolveConcernResponse, InvalidConcernError, ConcernNotFoundError types to format-response.ts and implement formatInvalidConcern, formatConcernNotFound, formatResolveConcernResponse formatters. Covers scenarios 1-5 in release-1-single-repo-matching.feature (feature-level match, ADR match, repo-conventions match, relevance ordering, CONCERN_NOT_FOUND). scenario_name is the entry-point; crafter enables remaining 4 scenarios one-at-a-time in the same TDD cycle.",
+          "estimated_hours": 4,
+          "dependencies": ["02-01"],
+          "files_to_modify": [
+            "src/core/concern-matcher.ts",
+            "src/core/format-response.ts"
+          ],
+          "criteria": [
+            "resolve_concern('auth') with a feature-level file containing 'auth' returns a match with relevance feature-level and source file under auth-flow",
+            "resolve_concern('persistence') with only an ADR containing 'persistence' returns a match with relevance architecture-level and source file under architecture decisions directory",
+            "resolve_concern('testing') with only a repo conventions file containing 'testing' returns a match with relevance repo-conventions",
+            "When both a feature-level file and an ADR contain 'caching', the feature-level match appears first in the response",
+            "resolve_concern('graphql-federation') with no matching files returns error CONCERN_NOT_FOUND identifying the concern and listing searched repos",
+            "retrieved_at is 'live (no cache)' on all responses"
+          ],
+          "test_file": "tests/acceptance/concern-based-querying/release-1-single-repo-matching.feature",
+          "scenario_name": "Agent finds a concern matched in a feature-level decision file"
+        }
+      ]
+    },
+    {
+      "id": "03",
+      "name": "Release 2: cross-repo scan and partial-failure resilience",
+      "steps": [
+        {
+          "id": "03-01",
+          "name": "Implement cross-repo aggregation and probe-failure skip logic in server.ts handler",
+          "description": "Extend the resolve_concern handler to iterate all configured repos in config order, probe each before reading, skip repos whose probe fails (adding a skip warning), accumulate matches and rejectedPaths across all repos, and include skip warnings in the final response. CONCERN_NOT_FOUND when matches is empty, listing all successfully scanned repos and all skip warnings. Covers all 4 scenarios in release-2-cross-repo.feature (multi-repo match, single-repo match, partial probe failure, all-repos-unreachable). scenario_name is the entry-point; crafter enables remaining 3 scenarios one-at-a-time.",
+          "estimated_hours": 3,
+          "dependencies": ["01-01"],
+          "files_to_modify": [
+            "src/shell/server.ts"
+          ],
+          "criteria": [
+            "resolve_concern('data persistence') with two repos each containing 'data persistence' returns matches from both repos, each correctly identifying its source repo, with feature-level matches before architecture-level matches",
+            "resolve_concern('logging') with only repo-alpha containing 'logging' returns matches only from repo-alpha and shows both repos were searched",
+            "When repo-gamma has a non-existent doc path, resolve_concern('observability') still returns matches from repo-alpha and includes a notice that repo-gamma was skipped, and is not an error",
+            "When all configured repos have unreachable doc paths, resolve_concern('auth') returns CONCERN_NOT_FOUND with a notice per skipped repo and an empty searched_repos list"
+          ],
+          "test_file": "tests/acceptance/concern-based-querying/release-2-cross-repo.feature",
+          "scenario_name": "Agent finds a concern present in multiple repos"
+        }
+      ]
+    },
+    {
+      "id": "04",
+      "name": "Release 3: rejected paths detection and partial-structure warning",
+      "steps": [
+        {
+          "id": "04-01",
+          "name": "Implement detectRejectedPaths in concern-matcher.ts",
+          "description": "Implement detectRejectedPaths pure function: splits file content into paragraphs (blocks of non-blank lines separated by one or more blank lines), returns a RejectedPath for each paragraph that contains the concern (case-insensitive) AND at least one rejection keyword (as specified in ADR-005/D-CBQ-D2). Snippet capped at 1500 chars. matchConcernInSnapshot calls detectRejectedPaths on every matched file so rejected paths appear alongside matches. Also implements partial-structure warning in formatResolveConcernResponse (no feature-level matches → warning added). Covers all 5 scenarios in release-3-rejected-paths.feature. scenario_name is the entry-point; crafter enables remaining 4 scenarios one-at-a-time.",
+          "estimated_hours": 3,
+          "dependencies": ["02-02"],
+          "files_to_modify": [
+            "src/core/concern-matcher.ts"
+          ],
+          "criteria": [
+            "resolve_concern('auth') with an ADR containing a Rejected section mentioning OAuth2 returns at least one rejected path with type rejected_alternative, source file pointing to the ADR, and snippet containing OAuth2",
+            "resolve_concern('caching') with a feature-level file containing 'Out of scope: caching/invalidation layer' returns at least one rejected path with snippet containing 'caching' and type rejected_alternative",
+            "resolve_concern('auth') with an ADR that both accepts 'auth' and rejects an alternative returns the same source file in both matches and rejected_paths, the match carrying the full-file snippet and the rejected path carrying only the rejection paragraph",
+            "resolve_concern('logging') with no rejection language in any file returns a response where rejected_paths is present and contains no entries",
+            "resolve_concern('rate-limiting') with only an ADR mentioning 'rate-limiting' and no feature-level files returns a match with relevance architecture-level and a warning about the absence of feature-level decisions, and is not an error"
+          ],
+          "test_file": "tests/acceptance/concern-based-querying/release-3-rejected-paths.feature",
+          "scenario_name": "Rejected alternative surfaced from an architecture decision record"
+        }
+      ]
+    }
+  ],
+  "implementation_scope": {
+    "source_directories": [
+      "src/core/",
+      "src/shell/"
+    ],
+    "test_directories": [
+      "tests/acceptance/concern-based-querying/"
+    ],
+    "excluded_patterns": [
+      "__init__.py",
+      "__pycache__/**"
+    ]
+  },
+  "validation": {
+    "status": "approved",
+    "reviewer": "nw-acceptance-designer-reviewer",
+    "approved_at": "2026-06-18T00:00:00Z"
+  }
+}

@@ -157,7 +157,7 @@ describeFeature(
 
     Scenario(
       "Agent finds a concern matched in repo conventions",
-      ({ Given, When, Then }) => {
+      ({ Given, And, When, Then }) => {
         Given(
           'the fixture repo has repo conventions documentation mentioning "testing"',
           () => {
