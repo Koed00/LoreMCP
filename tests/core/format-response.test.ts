@@ -6,6 +6,10 @@ import {
   formatNoNwaveStructure,
   formatQueryContextResponse,
   formatListFeaturesResponse,
+  formatInvalidConcern,
+  formatConcernNotFound,
+  formatResolveConcernResponse,
+  formatListConcernsResponse,
 } from "../../src/core/format-response.js";
 import type { ClassifyResult, ListFeaturesResult } from "../../src/core/classify-structure.js";
 
@@ -281,5 +285,81 @@ describe("formatListFeaturesResponse", () => {
       hasArchitectureAdrs: true,
       hasClaudeMd: true,
     });
+  });
+});
+
+describe("formatInvalidConcern", () => {
+  it("includes the literal explanatory message text, not an empty string", () => {
+    const result = formatInvalidConcern("???");
+    expect(result.message).toBe(
+      'Concern "???" is invalid. It must be non-empty and contain at least one alphanumeric character.',
+    );
+  });
+});
+
+describe("formatConcernNotFound", () => {
+  it("includes the literal explanatory message text, not an empty string", () => {
+    const result = formatConcernNotFound("auth", ["repo-a"], []);
+    expect(result.message).toBe(
+      'No nWave artifacts mentioning "auth" were found across the searched repos.',
+    );
+  });
+
+  it("omits the warnings field entirely when skipWarnings is empty", () => {
+    const result = formatConcernNotFound("auth", ["repo-a"], []);
+    expect(result).not.toHaveProperty("warnings");
+  });
+
+  it("includes the warnings field with the exact skipWarnings content when non-empty", () => {
+    const result = formatConcernNotFound("auth", ["repo-a"], ["repo-b was skipped: permission denied"]);
+    expect(result.warnings).toEqual(["repo-b was skipped: permission denied"]);
+  });
+});
+
+describe("formatResolveConcernResponse", () => {
+  it("does not add the partial-structure warning when at least one match is feature-level, even alongside non-feature-level matches", () => {
+    // Mixed relevances: one feature-level, one architecture-level. `some` should
+    // find the feature-level match and suppress the warning. A mutant changing
+    // `some` to `every` would incorrectly require ALL matches to be feature-level,
+    // flipping hasFeatureLevelMatch to false and adding the warning -- this test
+    // would then fail because warnings would be defined.
+    const matches = [
+      { repoName: "repo-a", sourceFile: "docs/feature/auth/design/wave-decisions.md", phase: "design", snippet: "auth tokens", relevance: "feature-level" as const },
+      { repoName: "repo-a", sourceFile: "docs/product/architecture/ADR-001.md", phase: "architecture", snippet: "auth strategy", relevance: "architecture-level" as const },
+    ];
+    const result = formatResolveConcernResponse("auth", matches, [], []);
+    expect(result.warnings).toBeUndefined();
+  });
+});
+
+describe("formatListConcernsResponse", () => {
+  it("shapes a response with concerns and searchedRepos, omitting warnings when empty", () => {
+    const result = formatListConcernsResponse(["auth", "caching"], ["repo-a", "repo-b"], []);
+
+    expect(result).toEqual({
+      concerns: ["auth", "caching"],
+      searchedRepos: ["repo-a", "repo-b"],
+    });
+    expect(result).not.toHaveProperty("warnings");
+  });
+
+  it("includes the warnings field with the exact content when non-empty", () => {
+    const result = formatListConcernsResponse(
+      ["auth"],
+      ["repo-a"],
+      ["repo-b was skipped: permission denied"],
+    );
+
+    expect(result).toEqual({
+      concerns: ["auth"],
+      searchedRepos: ["repo-a"],
+      warnings: ["repo-b was skipped: permission denied"],
+    });
+  });
+
+  it("returns an empty concerns array unmodified when no concerns are found", () => {
+    const result = formatListConcernsResponse([], ["repo-a"], []);
+    expect(result.concerns).toEqual([]);
+    expect(result.searchedRepos).toEqual(["repo-a"]);
   });
 });
