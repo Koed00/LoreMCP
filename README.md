@@ -266,11 +266,31 @@ This works because `CLAUDE.md` is read automatically at the start of every Claud
 
 ```bash
 npm install
-npm test          # vitest, 417 tests
+npm test          # vitest, 442 tests
 npm run typecheck
 npm run check:arch  # dependency-cruiser: core must not import shell
 npm run test:mutation  # stryker, ≥80% kill rate gate
 ```
+
+---
+
+## Releasing
+
+Publishing to npm is intentionally manual (no npm token in CI — see `.github/workflows/ci.yml`'s comment on this trade-off). Every release follows this sequence:
+
+1. Merge the feature/fix PR(s) to `main`.
+2. On `main`: bump the version (`npm version patch|minor|major --no-git-tag-version`), matching [semver](https://semver.org/) to the change — a new public MCP tool is `minor`, a bug/doc fix is `patch`.
+3. Run the full gate locally: `npm run build && npm test && npm run check:arch`.
+4. Commit the version bump (`chore: bump version to X.Y.Z`) and push to `main`.
+5. Publish: `npm publish --access public` (requires OTP/2FA).
+6. **Tag and release** — this is the step that's easy to forget, so it's spelled out here:
+   ```bash
+   git tag -a vX.Y.Z -m "vX.Y.Z"
+   git push origin vX.Y.Z
+   gh release create vX.Y.Z --title "vX.Y.Z — <one-line summary>" --notes "<what changed, why, link to the PR>"
+   ```
+
+Every published npm version should have a matching git tag and GitHub Release — release notes are the changelog, written once, not reconstructed later from PR history.
 
 ---
 
