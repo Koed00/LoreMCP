@@ -130,6 +130,43 @@ function readClassifiedFiles(
   return fileContents;
 }
 
+type DocFile = { sourceFile: string; phase: string; content: string };
+type AdrFile = { sourceFile: string; content: string };
+
+/** Reads each repo feature's wave-decisions.md (per phase), skipping unreadable files. */
+function readFeatureFiles(
+  reader: DocTreeReader,
+  repoRoot: string,
+  docPathRelative: string,
+  features: Record<string, string[]>,
+): DocFile[] {
+  const featureFiles: DocFile[] = [];
+  for (const [featureId, phases] of Object.entries(features)) {
+    for (const phase of phases) {
+      const sourceFile = path.join(docPathRelative, FEATURE_DIR, featureId, phase, "wave-decisions.md");
+      const absolutePath = path.join(repoRoot, sourceFile);
+      const outcome = reader.readFile(absolutePath);
+      if (outcome.ok) {
+        featureFiles.push({ sourceFile, phase, content: outcome.content });
+      }
+    }
+  }
+  return featureFiles;
+}
+
+/** Reads each ADR file listed in `adrSourceFiles`, skipping unreadable files. */
+function readAdrFiles(reader: DocTreeReader, repoRoot: string, adrSourceFiles: string[]): AdrFile[] {
+  const adrFiles: AdrFile[] = [];
+  for (const adrSourceFile of adrSourceFiles) {
+    const absolutePath = path.join(repoRoot, adrSourceFile);
+    const outcome = reader.readFile(absolutePath);
+    if (outcome.ok) {
+      adrFiles.push({ sourceFile: adrSourceFile, content: outcome.content });
+    }
+  }
+  return adrFiles;
+}
+
 /** Recursively converts camelCase object keys to snake_case for the MCP JSON contract. */
 function toSnakeCaseKeys(value: unknown): unknown {
   if (Array.isArray(value)) {
@@ -296,28 +333,16 @@ export function createServer(options: CreateServerOptions): McpServer {
         const snapshot = buildTreeSnapshot(reader, entry);
 
         // Collect feature files
-        const featureFiles: ConcernScanInput["featureFiles"] = [];
         const featureDirectoryNames = Object.keys(snapshot.features);
-        for (const [featureId, phases] of Object.entries(snapshot.features)) {
-          for (const phase of phases) {
-            const sourceFile = path.join(docPathRelative, FEATURE_DIR, featureId, phase, "wave-decisions.md");
-            const absolutePath = path.join(repoRoot, sourceFile);
-            const outcome = reader.readFile(absolutePath);
-            if (outcome.ok) {
-              featureFiles.push({ sourceFile, phase, content: outcome.content });
-            }
-          }
-        }
+        const featureFiles: ConcernScanInput["featureFiles"] = readFeatureFiles(
+          reader,
+          repoRoot,
+          docPathRelative,
+          snapshot.features,
+        );
 
         // Collect ADR files
-        const adrFiles: ConcernScanInput["adrFiles"] = [];
-        for (const adrSourceFile of snapshot.adrFiles) {
-          const absolutePath = path.join(repoRoot, adrSourceFile);
-          const outcome = reader.readFile(absolutePath);
-          if (outcome.ok) {
-            adrFiles.push({ sourceFile: adrSourceFile, content: outcome.content });
-          }
-        }
+        const adrFiles: ConcernScanInput["adrFiles"] = readAdrFiles(reader, repoRoot, snapshot.adrFiles);
 
         // Collect CLAUDE.md
         let claudeMdFile: ConcernScanInput["claudeMdFile"] = null;
@@ -389,27 +414,14 @@ export function createServer(options: CreateServerOptions): McpServer {
         const docPathRelative = path.relative(repoRoot, entry.docPath);
         const snapshot = buildTreeSnapshot(reader, entry);
 
-        const featureFiles: ConcernCandidateInput["featureFiles"] = [];
         const featureDirectoryNames = Object.keys(snapshot.features);
-        for (const [featureId, phases] of Object.entries(snapshot.features)) {
-          for (const phase of phases) {
-            const sourceFile = path.join(docPathRelative, FEATURE_DIR, featureId, phase, "wave-decisions.md");
-            const absolutePath = path.join(repoRoot, sourceFile);
-            const outcome = reader.readFile(absolutePath);
-            if (outcome.ok) {
-              featureFiles.push({ sourceFile, phase, content: outcome.content });
-            }
-          }
-        }
-
-        const adrFiles: ConcernCandidateInput["adrFiles"] = [];
-        for (const adrSourceFile of snapshot.adrFiles) {
-          const absolutePath = path.join(repoRoot, adrSourceFile);
-          const outcome = reader.readFile(absolutePath);
-          if (outcome.ok) {
-            adrFiles.push({ sourceFile: adrSourceFile, content: outcome.content });
-          }
-        }
+        const featureFiles: ConcernCandidateInput["featureFiles"] = readFeatureFiles(
+          reader,
+          repoRoot,
+          docPathRelative,
+          snapshot.features,
+        );
+        const adrFiles: ConcernCandidateInput["adrFiles"] = readAdrFiles(reader, repoRoot, snapshot.adrFiles);
 
         const candidates = collectConcernCandidates({
           featureDirectoryNames,
