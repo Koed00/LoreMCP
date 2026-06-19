@@ -206,7 +206,7 @@ Add to your Claude Code MCP config (`~/.claude/claude_desktop_config.json` or `.
 
 ```bash
 npm install
-npm test          # vitest, 303 tests
+npm test          # vitest, 369 tests
 npm run typecheck
 npm run check:arch  # dependency-cruiser: core must not import shell
 npm run test:mutation  # stryker, ≥80% kill rate gate
