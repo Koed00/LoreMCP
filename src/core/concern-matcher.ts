@@ -98,6 +98,84 @@ function splitIntoParagraphs(content: string): string[] {
   return content.split(/\n\n+/).filter((p) => p.trim().length > 0);
 }
 
+const HEADING_PATTERN = /^(#{1,6})\s/;
+
+interface HeadingLine {
+  lineIndex: number;
+  level: number;
+}
+
+function detectHeadingLines(lines: string[]): HeadingLine[] {
+  const headings: HeadingLine[] = [];
+  lines.forEach((line, lineIndex) => {
+    const match = line.match(HEADING_PATTERN);
+    if (match) {
+      headings.push({ lineIndex, level: match[1].length });
+    }
+  });
+  return headings;
+}
+
+function findSectionEnd(headings: HeadingLine[], sectionStartIndex: number, totalLines: number): number {
+  const currentLevel = headings[sectionStartIndex].level;
+  for (let i = sectionStartIndex + 1; i < headings.length; i++) {
+    if (headings[i].level <= currentLevel) {
+      return headings[i].lineIndex;
+    }
+  }
+  return totalLines;
+}
+
+function partitionIntoSections(content: string): string[] {
+  const lines = content.split("\n");
+  const headings = detectHeadingLines(lines);
+
+  return headings.map((heading, index) => {
+    const endLineIndex = findSectionEnd(headings, index, lines.length);
+    return lines.slice(heading.lineIndex, endLineIndex).join("\n");
+  });
+}
+
+function countOccurrences(text: string, concern: string): number {
+  const lowerText = text.toLowerCase();
+  const lowerConcern = concern.toLowerCase();
+  if (lowerConcern.length === 0) {
+    return 0;
+  }
+
+  let count = 0;
+  let searchFrom = 0;
+  let foundIndex = lowerText.indexOf(lowerConcern, searchFrom);
+  while (foundIndex !== -1) {
+    count += 1;
+    searchFrom = foundIndex + lowerConcern.length;
+    foundIndex = lowerText.indexOf(lowerConcern, searchFrom);
+  }
+  return count;
+}
+
+export function extractHeadingAnchoredSnippet(content: string, concern: string): string | null {
+  const sections = partitionIntoSections(content);
+  if (sections.length === 0) {
+    return null;
+  }
+
+  const sectionOccurrenceCounts = sections.map((section) => countOccurrences(section, concern));
+  const matchingSectionIndexes = sectionOccurrenceCounts
+    .map((occurrenceCount, sectionIndex) => ({ occurrenceCount, sectionIndex }))
+    .filter(({ occurrenceCount }) => occurrenceCount > 0);
+
+  if (matchingSectionIndexes.length === 0) {
+    return null;
+  }
+
+  const mostDenseSection = matchingSectionIndexes.reduce((densest, candidate) =>
+    candidate.occurrenceCount > densest.occurrenceCount ? candidate : densest,
+  );
+
+  return sections[mostDenseSection.sectionIndex];
+}
+
 // ---------------------------------------------------------------------------
 // Public pure functions
 // ---------------------------------------------------------------------------
@@ -151,7 +229,9 @@ export function matchConcernInSnapshot(input: ConcernScanInput): ConcernScanResu
     const contentMatch = containsConcern(file.content, concern);
 
     if (contentMatch || directoryMatch) {
-      const { snippet, truncated } = capSnippetAtHeadingBoundary(file.content, SNIPPET_MAX_CHARS);
+      const headingAnchored = extractHeadingAnchoredSnippet(file.content, concern);
+      const sourceText = headingAnchored ?? file.content;
+      const { snippet, truncated } = capSnippetAtHeadingBoundary(sourceText, SNIPPET_MAX_CHARS);
       if (truncated) {
         truncationWarnings.push(`${file.sourceFile} was truncated to ${SNIPPET_MAX_CHARS} chars`);
       }
@@ -171,7 +251,9 @@ export function matchConcernInSnapshot(input: ConcernScanInput): ConcernScanResu
   // Architecture-level: ADR content match
   for (const adr of adrFiles) {
     if (containsConcern(adr.content, concern)) {
-      const { snippet, truncated } = capSnippetAtHeadingBoundary(adr.content, SNIPPET_MAX_CHARS);
+      const headingAnchored = extractHeadingAnchoredSnippet(adr.content, concern);
+      const sourceText = headingAnchored ?? adr.content;
+      const { snippet, truncated } = capSnippetAtHeadingBoundary(sourceText, SNIPPET_MAX_CHARS);
       if (truncated) {
         truncationWarnings.push(`${adr.sourceFile} was truncated to ${SNIPPET_MAX_CHARS} chars`);
       }
@@ -190,7 +272,9 @@ export function matchConcernInSnapshot(input: ConcernScanInput): ConcernScanResu
 
   // Repo-conventions: CLAUDE.md match
   if (claudeMdFile !== null && containsConcern(claudeMdFile.content, concern)) {
-    const { snippet, truncated } = capSnippetAtHeadingBoundary(claudeMdFile.content, SNIPPET_MAX_CHARS);
+    const headingAnchored = extractHeadingAnchoredSnippet(claudeMdFile.content, concern);
+    const sourceText = headingAnchored ?? claudeMdFile.content;
+    const { snippet, truncated } = capSnippetAtHeadingBoundary(sourceText, SNIPPET_MAX_CHARS);
     if (truncated) {
       truncationWarnings.push(`${claudeMdFile.sourceFile} was truncated to ${SNIPPET_MAX_CHARS} chars`);
     }

@@ -3,8 +3,99 @@ import {
   validateConcern,
   matchConcernInSnapshot,
   detectRejectedPaths,
+  extractHeadingAnchoredSnippet,
   type ConcernScanInput,
 } from "../../src/core/concern-matcher.js";
+
+// ---------------------------------------------------------------------------
+// extractHeadingAnchoredSnippet
+// ---------------------------------------------------------------------------
+
+describe("extractHeadingAnchoredSnippet", () => {
+  it("returns only the matched section in a multi-section file", () => {
+    const content = [
+      "## D-1: deployment target",
+      "",
+      "We deploy via Docker Compose on a single host.",
+      "",
+      "## D-2: caching layer",
+      "",
+      "We use Redis for caching session data across requests.",
+      "",
+      "## D-3: logging format",
+      "",
+      "We emit structured JSON logs to stdout.",
+    ].join("\n");
+
+    const result = extractHeadingAnchoredSnippet(content, "caching");
+
+    expect(result).not.toBeNull();
+    expect(result).toContain("## D-2: caching layer");
+    expect(result).not.toContain("## D-1: deployment target");
+    expect(result).not.toContain("## D-3: logging format");
+  });
+
+  it("returns null for headingless content, signaling caller to fall back", () => {
+    const content =
+      "All testing uses vitest for unit and integration tests. No headings here.";
+
+    const result = extractHeadingAnchoredSnippet(content, "testing");
+
+    expect(result).toBeNull();
+  });
+
+  it("anchors the snippet at a heading when the concern appears only in the heading line", () => {
+    const content = [
+      "## D-0: unrelated decision",
+      "",
+      "We chose a monorepo layout for simplicity.",
+      "",
+      "## D-auth: JWT strategy",
+      "",
+      "We use signed tokens for session management without mentioning the word here.",
+    ].join("\n");
+
+    const result = extractHeadingAnchoredSnippet(content, "auth");
+
+    expect(result).not.toBeNull();
+    expect(result!.trim().startsWith("## D-auth: JWT strategy")).toBe(true);
+  });
+
+  it("resolves to the section with the highest occurrence count when multiple sections match", () => {
+    const content = [
+      "## D-1: rate-limiting strategy",
+      "",
+      "rate-limiting is applied at the gateway. rate-limiting uses a token",
+      "bucket algorithm. rate-limiting thresholds are configurable per route.",
+      "",
+      "## D-2: monitoring",
+      "",
+      "We also reference rate-limiting briefly here for context on alerts.",
+    ].join("\n");
+
+    const result = extractHeadingAnchoredSnippet(content, "rate-limiting");
+
+    expect(result).not.toBeNull();
+    expect(result).toContain("## D-1: rate-limiting strategy");
+    expect(result).not.toContain("## D-2: monitoring");
+  });
+
+  it("returns null when no section contains a match (defensive case)", () => {
+    const content = [
+      "## D-1: deployment target",
+      "",
+      "We deploy via Docker Compose on a single host.",
+      "",
+      "## D-2: logging format",
+      "",
+      "We emit structured JSON logs to stdout.",
+    ].join("\n");
+
+    const result = extractHeadingAnchoredSnippet(content, "caching");
+
+    expect(result).toBeNull();
+  });
+});
 
 // ---------------------------------------------------------------------------
 // validateConcern
