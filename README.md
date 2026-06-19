@@ -124,6 +124,55 @@ Returns live-read snippets from wave-decisions, ADRs, and/or `CLAUDE.md` for a g
 
 ---
 
+### `resolve_concern`
+
+Searches all configured repos for nWave artifacts mentioning a concern keyword, returning matches ranked by relevance tier, rejected alternatives, and partial-structure warnings. No `repo_name` required — scans everything.
+
+**Input**: `concern` (string) — a plain-language topic, e.g. `"auth"`, `"data persistence"`, `"rate-limiting"`
+
+**Output** (success):
+```json
+{
+  "concern": "auth",
+  "matches": [
+    {
+      "repo_name": "my-api",
+      "source_file": "docs/feature/auth-flow/design/wave-decisions.md",
+      "phase": "design",
+      "snippet": "## D-auth: JWT strategy...",
+      "relevance": "feature-level"
+    },
+    {
+      "repo_name": "my-api",
+      "source_file": "docs/product/architecture/ADR-0007-auth-strategy.md",
+      "phase": "architecture",
+      "snippet": "# ADR-0007: Auth Strategy\nStatus: Accepted\n...",
+      "relevance": "architecture-level"
+    }
+  ],
+  "rejected_paths": [
+    {
+      "repo_name": "my-api",
+      "source_file": "docs/product/architecture/ADR-0007-auth-strategy.md",
+      "snippet": "Rejected: OAuth2 — too complex for current scale.",
+      "type": "rejected_alternative"
+    }
+  ],
+  "retrieved_at": "live (no cache)"
+}
+```
+
+Matches are ordered: `feature-level` first, then `architecture-level`, then `repo-conventions`. `rejected_paths` is always present (empty array if none found).
+
+**Structured errors**:
+
+| Error | When |
+|-------|------|
+| `INVALID_CONCERN` | concern is empty or contains no alphanumeric characters |
+| `CONCERN_NOT_FOUND` | no file in any configured repo mentions the concern |
+
+---
+
 ## Claude Code setup
 
 Add to your Claude Code MCP config (`~/.claude/claude_desktop_config.json` or `.mcp.json`):
