@@ -292,5 +292,72 @@ describeFeature(
         });
       },
     );
+
+    Scenario(
+      "A document title heading does not steal the match from its own subsection",
+      ({ Given, And, When, Then }) => {
+        Given(
+          'the fixture repo has a wave-decisions.md with a single top-level title heading followed by three "## " subsections',
+          () => {
+            writeFile(
+              path.join(fixtureDocPath, "feature", "platform", "design", "wave-decisions.md"),
+              [
+                "# Wave Decisions -- DESIGN (platform)",
+                "",
+                "## D-1: deployment target",
+                "",
+                "We deploy via Docker Compose on a single host.",
+                "",
+                "## D-2: logging format",
+                "",
+                "We emit structured JSON logs to stdout for logging consistency.",
+                "",
+                "## D-3: monitoring",
+                "",
+                "We use Prometheus for metrics collection.",
+              ].join("\n"),
+            );
+          },
+        );
+
+        And('only the second subsection contains the word "logging"', () => {});
+
+        When('the agent resolves the concern "logging"', async () => {
+          const result = await handle!.client.callTool({
+            name: "resolve_concern",
+            arguments: { concern: "logging" },
+          });
+          lastResponse = parseToolJson(result as any);
+        });
+
+        Then("the match snippet contains the second subsection's heading", () => {
+          const match = lastResponse.matches?.find((m: any) =>
+            m.source_file?.includes("platform"),
+          );
+          expect(match).toBeDefined();
+          expect(match.snippet).toContain("## D-2: logging format");
+        });
+
+        And(
+          "the match snippet does not contain the first or third subsection's heading",
+          () => {
+            const match = lastResponse.matches?.find((m: any) =>
+              m.source_file?.includes("platform"),
+            );
+            expect(match.snippet).not.toContain("## D-1: deployment target");
+            expect(match.snippet).not.toContain("## D-3: monitoring");
+          },
+        );
+
+        And("the match snippet does not start at the top-level title heading", () => {
+          const match = lastResponse.matches?.find((m: any) =>
+            m.source_file?.includes("platform"),
+          );
+          expect(
+            match.snippet.trim().startsWith("# Wave Decisions -- DESIGN (platform)"),
+          ).toBe(false);
+        });
+      },
+    );
   },
 );

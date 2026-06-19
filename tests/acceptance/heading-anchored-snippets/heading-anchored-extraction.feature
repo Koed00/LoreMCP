@@ -3,10 +3,10 @@
 # Driving port: lore-mcp MCP server over stdio (real subprocess), resolve_concern tool.
 # Driven adapter: real local filesystem fixture repos (Strategy C: Real local).
 #
-# Scenario count: 5
-# Error/edge scenarios: 2 of 5 (40%) -- meets 40% target (headingless fallback,
-# oversized-section truncation).
-# Story coverage: US-HAS-01 (all 5 AC).
+# Scenario count: 6
+# Error/edge scenarios: 2 of 6 (33%) -- below the 40% target, but scenario 6 is a
+# regression scenario (upstream-issues.md Issue 1), not a new happy/error classification.
+# Story coverage: US-HAS-01 (all 5 AC) + regression fix from post-merge dogfood finding.
 
 @real-io
 Feature: Agent receives a heading-anchored snippet instead of a whole-file dump
@@ -46,3 +46,11 @@ Feature: Agent receives a heading-anchored snippet instead of a whole-file dump
     When the agent resolves the concern "persistence"
     Then the match snippet is truncated to the size cap
     And a truncation warning is present in the response
+
+  Scenario: A document title heading does not steal the match from its own subsection
+    Given the fixture repo has a wave-decisions.md with a single top-level title heading followed by three "## " subsections
+    And only the second subsection contains the word "logging"
+    When the agent resolves the concern "logging"
+    Then the match snippet contains the second subsection's heading
+    And the match snippet does not contain the first or third subsection's heading
+    And the match snippet does not start at the top-level title heading
