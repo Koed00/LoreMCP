@@ -109,18 +109,23 @@ function detectHeadingLines(lines: string[]): HeadingLine[] {
   const headings: HeadingLine[] = [];
   lines.forEach((line, lineIndex) => {
     const match = line.match(HEADING_PATTERN);
-    if (match) {
-      headings.push({ lineIndex, level: match[1].length });
+    const hashes = match?.[1];
+    if (hashes) {
+      headings.push({ lineIndex, level: hashes.length });
     }
   });
   return headings;
 }
 
 function findSectionEnd(headings: HeadingLine[], sectionStartIndex: number, totalLines: number): number {
-  const currentLevel = headings[sectionStartIndex].level;
+  const currentHeading = headings[sectionStartIndex];
+  if (!currentHeading) {
+    return totalLines;
+  }
   for (let i = sectionStartIndex + 1; i < headings.length; i++) {
-    if (headings[i].level <= currentLevel) {
-      return headings[i].lineIndex;
+    const candidate = headings[i];
+    if (candidate && candidate.level <= currentHeading.level) {
+      return candidate.lineIndex;
     }
   }
   return totalLines;
@@ -173,7 +178,7 @@ export function extractHeadingAnchoredSnippet(content: string, concern: string):
     candidate.occurrenceCount > densest.occurrenceCount ? candidate : densest,
   );
 
-  return sections[mostDenseSection.sectionIndex];
+  return sections[mostDenseSection.sectionIndex] ?? null;
 }
 
 // ---------------------------------------------------------------------------
