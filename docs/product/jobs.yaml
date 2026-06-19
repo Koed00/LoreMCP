@@ -41,3 +41,6 @@ changelog:
   - date: "2026-06-11"
     feature: "ab-mcp"
     change: "Bootstrapped docs/product/jobs.yaml with the validated cross-repo context grounding job from DISCOVER."
+
+  # DIVERGE round 2026-06-19: backlog of options considered for next improvement
+  # under cross-repo-context-grounding job, see docs/feature/heading-anchored-snippets/recommendation.md
