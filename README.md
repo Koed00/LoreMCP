@@ -4,7 +4,7 @@ A local, read-only MCP server that gives an AI coding agent live access to [nWav
 
 **The problem**: AI agents working in a codebase start each session blind. They have no way to query prior architectural decisions, domain constraints, or feature-level context before they act — so they reinvent patterns, contradict last sprint's decisions, or miss domain rules any experienced team member would know.
 
-**What LoreMCP does**: Exposes two MCP tools — `list_features` and `query_context` — that read wave-decisions, ADRs, and `CLAUDE.md` directly from your local filesystem and return them as structured JSON. No daemon, no sync, no remote calls. Point it at a folder, and your agent can ask "what decisions were made for feature X?" before writing a single line.
+**What LoreMCP does**: Exposes three MCP tools — `list_features`, `query_context`, and `resolve_concern` — that read wave-decisions, ADRs, and `CLAUDE.md` directly from your local filesystem and return them as structured JSON. No daemon, no sync, no remote calls. Point it at a folder, and your agent can ask "what decisions were made for feature X?" or "what does the platform use for auth?" before writing a single line.
 
 ---
 
