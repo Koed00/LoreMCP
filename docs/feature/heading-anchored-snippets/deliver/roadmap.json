@@ -1,0 +1,69 @@
+{
+  "roadmap": {
+    "project_id": "heading-anchored-snippets",
+    "created_at": "2026-06-19T11:20:00Z",
+    "total_steps": 2,
+    "phases": 1
+  },
+  "phases": [
+    {
+      "id": "01",
+      "name": "Heading-anchored snippet extraction",
+      "steps": [
+        {
+          "id": "01-01",
+          "name": "Implement extractHeadingAnchoredSnippet and wire call sites",
+          "description": "Add extractHeadingAnchoredSnippet(content, concern): string | null to src/core/concern-matcher.ts per architecture-design.md contract: detect ATX markdown headings (regex ^#{1,6}\\s), partition content into sections from each heading to the next heading of equal-or-higher level, return null if no headings exist, return the single matching section if exactly one matches, return the highest-occurrence-count section if multiple match (ties broken by first-occurring section). Wire into the three snippet-building call sites inside matchConcernInSnapshot (feature files, ADR files, CLAUDE.md): call extractHeadingAnchoredSnippet first, fall back to file.content on null, then pass through the existing capSnippetAtHeadingBoundary truncation unchanged. Covers all 5 scenarios in heading-anchored-extraction.feature.",
+          "estimated_hours": 3,
+          "dependencies": [],
+          "files_to_modify": [
+            "src/core/concern-matcher.ts"
+          ],
+          "criteria": [
+            "A concern matching exactly one section of a multi-section file returns a snippet scoped to that section only",
+            "A concern in a headingless file returns the unchanged whole-file-up-to-cap snippet (zero regression)",
+            "A concern appearing only in a heading line anchors the snippet starting at that heading",
+            "A concern appearing in multiple sections returns the section with the highest occurrence count",
+            "A matched section exceeding the size cap is truncated with a warning, reusing the existing truncation mechanism"
+          ],
+          "test_file": "tests/acceptance/heading-anchored-snippets/heading-anchored-extraction.feature",
+          "scenario_name": "Snippet is narrowed to the matched section in a multi-section file"
+        },
+        {
+          "id": "01-02",
+          "name": "Fix ancestor-section-always-wins density bug",
+          "description": "Post-merge dogfood check found that a section's structural ancestor (e.g. a single top-level H1 title heading followed by multiple H2 subsections, with no second H1) always wins the multi-section density comparison over its own descendants, because its occurrence count sums every nested subsection's occurrences. Fix extractHeadingAnchoredSnippet in src/core/concern-matcher.ts: before density comparison, filter out any matching section that is a structural ancestor of another matching section (i.e. whose line range fully contains another matching section's line range). Density comparison then applies only among matching sections with no ancestor/descendant relationship to each other. See docs/feature/heading-anchored-snippets/distill/upstream-issues.md Issue 1 for full analysis and acceptance criteria.",
+          "estimated_hours": 1,
+          "dependencies": ["01-01"],
+          "files_to_modify": [
+            "src/core/concern-matcher.ts"
+          ],
+          "criteria": [
+            "A wave-decisions.md with one top-level H1 title and three ## subsections, where the concern appears in exactly one subsection, returns a snippet scoped to that subsection, not the whole file",
+            "The returned snippet does not start at the top-level title heading",
+            "All 5 pre-existing scenarios in heading-anchored-extraction.feature remain green (zero regression)"
+          ],
+          "test_file": "tests/acceptance/heading-anchored-snippets/heading-anchored-extraction.feature",
+          "scenario_name": "A document title heading does not steal the match from its own subsection"
+        }
+      ]
+    }
+  ],
+  "implementation_scope": {
+    "source_directories": [
+      "src/core/"
+    ],
+    "test_directories": [
+      "tests/acceptance/heading-anchored-snippets/"
+    ],
+    "excluded_patterns": [
+      "__init__.py",
+      "__pycache__/**"
+    ]
+  },
+  "validation": {
+    "status": "approved",
+    "reviewer": "nw-acceptance-designer-reviewer",
+    "approved_at": "2026-06-19T11:21:00Z"
+  }
+}
