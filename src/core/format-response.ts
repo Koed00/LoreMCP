@@ -5,6 +5,10 @@ import type {
 import type { ConcernMatch, RejectedPath } from "./concern-matcher.js";
 import { capSnippetAtHeadingBoundary } from "./concern-matcher.js";
 
+// Mirrors concern-matcher.ts's SNIPPET_MAX_CHARS (same value, independent
+// constant) -- this one bounds query_context's per-file snippet size, the
+// other bounds resolve_concern's per-match snippet size. Kept separate
+// because the two tools' truncation policies are free to diverge.
 const SNIPPET_MAX_CHARS = 8000;
 
 export type QueryContextResultItem = {

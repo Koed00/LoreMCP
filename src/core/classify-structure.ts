@@ -56,6 +56,12 @@ function claudeMdFileToRead(snapshot: TreeSnapshot): FileToRead[] {
     : [];
 }
 
+// Mirrors src/shell/server.ts's DELIVER_PHASE_NAME. Duplicated rather than
+// shared because classify-structure.ts is core (no imports from shell) and
+// server.ts is shell -- see CLAUDE.md's functional core/imperative shell
+// boundary. Keep both literals in sync if the phase name ever changes.
+const DELIVER_PHASE_NAME = "deliver";
+
 // "deliver" is a detected phase (per its execution-log.json having a COMMIT
 // entry, see src/shell/server.ts's discoverFeatures), but DELIVER produces an
 // execution-log.json, never a wave-decisions.md -- attempting that read would
@@ -67,7 +73,7 @@ function featurePhaseFilesToRead(
 ): FileToRead[] {
   const phases = snapshot.features[featureId] ?? [];
   return phases
-    .filter((phase) => phase !== "deliver")
+    .filter((phase) => phase !== DELIVER_PHASE_NAME)
     .map((phase) => ({
       sourceFile: `docs/feature/${featureId}/${phase}/wave-decisions.md`,
       phase,
