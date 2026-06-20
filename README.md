@@ -91,6 +91,8 @@ Enumerates `docs/feature/*/` and phase subdirectories for a configured repo.
 }
 ```
 
+Most phases are detected by the presence of `wave-decisions.md`. `deliver` is the exception — it only appears once `deliver/execution-log.json` exists and records at least one completed (`COMMIT`-phase) step, so `phases` reflects whether DELIVER actually shipped, not just whether the directory exists.
+
 ---
 
 ### `query_context`
@@ -119,6 +121,8 @@ Returns live-read snippets from wave-decisions, ADRs, and/or `CLAUDE.md` for a g
   "retrieved_at": "live (uncached) read at 2026-06-16T10:07:33.412Z"
 }
 ```
+
+Each result's snippet is capped at 8000 chars (per-file), and the whole response is capped at 60000 chars total (dropping a feature's oldest results first — but always after dropping repo-wide ADR/`CLAUDE.md` content, since that's not specific to the queried feature). A `warnings` entry is added when either cap triggers.
 
 **Partial structure** (feature dir absent but ADRs/CLAUDE.md exist — returns best available context with a warning):
 ```json
@@ -266,7 +270,7 @@ This works because `CLAUDE.md` is read automatically at the start of every Claud
 
 ```bash
 npm install
-npm test          # vitest, 442 tests
+npm test          # vitest, 520 tests
 npm run typecheck
 npm run check:arch  # dependency-cruiser: core must not import shell
 npm run test:mutation  # stryker, ≥80% kill rate gate
