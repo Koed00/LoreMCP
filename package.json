@@ -1,6 +1,6 @@
 {
   "name": "@koed00/lore-mcp",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Local, read-only MCP server giving AI coding agents live access to nWave-structured documentation in configured sibling repos.",
   "type": "module",
   "license": "MIT",
