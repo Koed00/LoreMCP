@@ -246,6 +246,44 @@ describe("formatQueryContextResponse", () => {
     );
     expect(response.warnings!.some((warning) => warning.includes("could not be read"))).toBe(true);
   });
+
+  it("adds a per-file-truncation warning when an individual snippet exceeds the 8000-char cap", () => {
+    // Content over 8000 chars triggers capSnippetAtHeadingBoundary's truncation
+    // path inside buildQueryContextResults, incrementing perFileTruncations.
+    // This must surface as its own warning message, distinct from the
+    // total-response-budget truncation warning (which is not triggered here
+    // since there's only one small-enough-after-cap result).
+    const longContent = "auth strategy details repeated for length. ".repeat(300);
+    expect(longContent.length).toBeGreaterThan(8000);
+
+    const classified: ClassifyResult = {
+      outcome: "FULL",
+      filesToRead: [
+        { sourceFile: "docs/feature/ab-mcp/discover/wave-decisions.md", phase: "discover" },
+      ],
+      warnings: [],
+      availableFeatures: ["ab-mcp"],
+    };
+    const fileContents = new Map<string, string>([
+      ["docs/feature/ab-mcp/discover/wave-decisions.md", longContent],
+    ]);
+
+    const result = formatQueryContextResponse(
+      "repo-a",
+      "ab-mcp",
+      "/srv/repo-a/docs",
+      classified,
+      fileContents,
+    );
+
+    const response = result as { warnings?: string[]; results: QueryContextResultItem[] };
+    expect(response.results[0]!.snippet.length).toBeLessThan(longContent.length);
+    expect(response.warnings).toBeDefined();
+    expect(
+      response.warnings!.some((warning) => warning.includes("had their individual snippet truncated to 8000 chars")),
+    ).toBe(true);
+    expect(response.warnings!.some((warning) => warning.startsWith("1 result(s)"))).toBe(true);
+  });
 });
 
 describe("capResultsToTotalBudget", () => {
