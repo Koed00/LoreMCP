@@ -1,0 +1,100 @@
+{
+  "roadmap": {
+    "project_id": "tool-output-quality",
+    "created_at": "2026-06-19T18:30:00Z",
+    "total_steps": 4,
+    "phases": 1
+  },
+  "phases": [
+    {
+      "id": "01",
+      "name": "Tool output quality fixes",
+      "steps": [
+        {
+          "id": "01-01",
+          "name": "Implement query_context total-response size cap",
+          "description": "Add TOTAL_RESPONSE_MAX_CHARS = 24000 constant and capResultsToTotalBudget(results) pure function to src/core/format-response.ts per architecture-design.md contract: sums snippet.length across results from the END of the array backward (most recent first, since results is built oldest-to-newest), keeps the maximal suffix whose cumulative length is <= 24000, drops whole oldest results (never re-truncates mid-result). Extend buildQueryContextResults/formatQueryContextResponse to call this after assembling results; add a truncation warning to the warnings array when results were dropped. Does NOT reuse or modify capSnippetAtHeadingBoundary in concern-matcher.ts (per ADR-007). Covers scenarios 1-2 in tool-output-quality.feature.",
+          "estimated_hours": 2,
+          "dependencies": [],
+          "files_to_modify": [
+            "src/core/format-response.ts"
+          ],
+          "criteria": [
+            "A feature whose combined wave-decisions content exceeds 24000 chars returns a truncated response with a warning",
+            "A feature under the cap returns an unchanged, untruncated response (zero regression)",
+            "When truncated, the most recent phase's content is preserved and the oldest phase's content is dropped"
+          ],
+          "test_file": "tests/acceptance/tool-output-quality/tool-output-quality.feature",
+          "scenario_name": "query_context caps an oversized aggregated response with a warning"
+        },
+        {
+          "id": "01-02",
+          "name": "Implement list_concerns heading-text stoplist",
+          "description": "Add GENERIC_HEADING_STOPLIST constant (case-insensitive exact-match list: Decisions, Summary, Key Decisions, Mode, Constraints Established, Upstream Changes, Requirements Summary, Domain Examples, Acceptance Criteria, plus other convention-driven boilerplate headers found in this repo's own wave-decisions.md files) and isGenericHeading(headingText) private function to src/core/concern-matcher.ts, following the existing REJECTION_KEYWORDS/containsRejectionKeyword pattern as structural precedent (not literal reuse -- exact match, not substring). Extend collectFeatureFileHeadingCandidates to filter out headings where isGenericHeading is true, BEFORE returning. Do NOT touch collectAdrCandidates or featureDirectoryNames passthrough -- stoplist applies ONLY to heading-text candidates. Covers scenarios 3-4 in tool-output-quality.feature.",
+          "estimated_hours": 1,
+          "dependencies": [],
+          "files_to_modify": [
+            "src/core/concern-matcher.ts"
+          ],
+          "criteria": [
+            "A heading-text candidate matching the stoplist is excluded from the list_concerns response",
+            "A genuine decision-topic heading is not excluded",
+            "A feature directory or ADR title literally matching a stoplist term is not excluded"
+          ],
+          "test_file": "tests/acceptance/tool-output-quality/tool-output-quality.feature",
+          "scenario_name": "list_concerns filters generic heading text but keeps genuine topics"
+        },
+        {
+          "id": "01-03",
+          "name": "Implement list_features deliver-phase detection",
+          "description": "Extend discoverFeatures in src/shell/server.ts: for each phase directory named exactly 'deliver', check for execution-log.json at featureDirAbsolute/deliver/execution-log.json via reader.readFile; if it exists and is parseable JSON with an events array, include 'deliver' in that feature's phases array ONLY if at least one element has p === 'COMMIT'. Malformed/unparseable execution-log.json or missing file is treated as 'deliver phase not detected' (fail-closed, no new error/warning surfaced). All OTHER phase directories keep the existing wave-decisions.md-presence check, completely unchanged. classify-structure.ts requires NO change (it only consumes the resulting phases array, unaware of detection mechanism). Covers scenarios 5-7 in tool-output-quality.feature.",
+          "estimated_hours": 2,
+          "dependencies": [],
+          "files_to_modify": [
+            "src/shell/server.ts"
+          ],
+          "criteria": [
+            "A feature with execution-log.json containing >=1 COMMIT entry includes 'deliver' in its phases array",
+            "A feature with execution-log.json containing zero COMMIT entries does not include 'deliver'",
+            "A feature with no deliver/ directory at all behaves identically to today (zero regression)"
+          ],
+          "test_file": "tests/acceptance/tool-output-quality/tool-output-quality.feature",
+          "scenario_name": "list_features reports the deliver phase when execution-log.json has a COMMIT entry"
+        },
+        {
+          "id": "01-04",
+          "name": "Add list_concerns nudge to resolve_concern's CONCERN_NOT_FOUND message",
+          "description": "Edit formatConcernNotFound in src/core/format-response.ts: change the message string from 'No nWave artifacts mentioning \"${concern}\" were found across the searched repos.' to additionally mention list_concerns() as the next step, e.g. append ' Try list_concerns() to browse available topics.' No change to function signature, parameters, or the ConcernNotFoundError type shape -- unconditional text, no check for whether list_concerns would itself return empty. Covers scenario 8 in tool-output-quality.feature.",
+          "estimated_hours": 1,
+          "dependencies": [],
+          "files_to_modify": [
+            "src/core/format-response.ts"
+          ],
+          "criteria": [
+            "CONCERN_NOT_FOUND's message mentions list_concerns"
+          ],
+          "test_file": "tests/acceptance/tool-output-quality/tool-output-quality.feature",
+          "scenario_name": "resolve_concern's not-found message nudges the agent toward list_concerns"
+        }
+      ]
+    }
+  ],
+  "implementation_scope": {
+    "source_directories": [
+      "src/core/",
+      "src/shell/"
+    ],
+    "test_directories": [
+      "tests/acceptance/tool-output-quality/"
+    ],
+    "excluded_patterns": [
+      "__init__.py",
+      "__pycache__/**"
+    ]
+  },
+  "validation": {
+    "status": "approved",
+    "reviewer": "nw-acceptance-designer-reviewer",
+    "approved_at": "2026-06-19T18:32:00Z"
+  }
+}
