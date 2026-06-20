@@ -10,8 +10,13 @@ import {
   formatConcernNotFound,
   formatResolveConcernResponse,
   formatListConcernsResponse,
+  capResultsToTotalBudget,
 } from "../../src/core/format-response.js";
-import type { ClassifyResult, ListFeaturesResult } from "../../src/core/classify-structure.js";
+import type {
+  ClassifyResult,
+  ListFeaturesResult,
+} from "../../src/core/classify-structure.js";
+import type { QueryContextResultItem } from "../../src/core/format-response.js";
 
 describe("formatRepoNotConfigured", () => {
   it("shapes a REPO_NOT_CONFIGURED error mentioning the repo name", () => {
@@ -240,6 +245,56 @@ describe("formatQueryContextResponse", () => {
       expect.stringContaining("docs/product/architecture/adr-001.md"),
     );
     expect(response.warnings!.some((warning) => warning.includes("could not be read"))).toBe(true);
+  });
+});
+
+describe("capResultsToTotalBudget", () => {
+  function makeResult(phase: string, snippetLength: number): QueryContextResultItem {
+    return {
+      sourceFile: `docs/feature/example/${phase}/wave-decisions.md`,
+      phase,
+      snippet: "x".repeat(snippetLength),
+    };
+  }
+
+  it("passes through unchanged when the combined snippet length is under budget", () => {
+    const results = [makeResult("discover", 100), makeResult("design", 200)];
+
+    const outcome = capResultsToTotalBudget(results);
+
+    expect(outcome).toEqual({ results, truncated: false });
+  });
+
+  it("drops the oldest results first when the combined snippet length exceeds budget", () => {
+    const results = [
+      makeResult("discover", 20000),
+      makeResult("design", 10000),
+      makeResult("deliver", 5000),
+    ];
+
+    const outcome = capResultsToTotalBudget(results);
+
+    expect(outcome.truncated).toBe(true);
+    expect(outcome.results).toEqual([makeResult("design", 10000), makeResult("deliver", 5000)]);
+  });
+
+  it("keeps results exactly at the budget boundary without dropping any", () => {
+    const results = [makeResult("discover", 24000)];
+
+    const outcome = capResultsToTotalBudget(results);
+
+    expect(outcome).toEqual({ results, truncated: false });
+  });
+
+  it("never splits a single result's snippet — a kept result is whole or it is dropped", () => {
+    const results = [makeResult("discover", 30000), makeResult("design", 100)];
+
+    const outcome = capResultsToTotalBudget(results);
+
+    expect(outcome.truncated).toBe(true);
+    expect(outcome.results).toHaveLength(1);
+    expect(outcome.results[0]).toEqual(makeResult("design", 100));
+    expect(outcome.results[0]?.snippet.length).toBe(100);
   });
 });
 

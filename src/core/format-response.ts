@@ -135,6 +135,40 @@ function buildQueryContextResults(
   return { results, toctouWarnings };
 }
 
+const TOTAL_RESPONSE_MAX_CHARS = 24000;
+
+export function capResultsToTotalBudget(
+  results: QueryContextResultItem[],
+): { results: QueryContextResultItem[]; truncated: boolean } {
+  const totalLength = results.reduce((sum, result) => sum + result.snippet.length, 0);
+  if (totalLength <= TOTAL_RESPONSE_MAX_CHARS) {
+    return { results, truncated: false };
+  }
+
+  const kept: QueryContextResultItem[] = [];
+  let cumulativeLength = 0;
+
+  for (let index = results.length - 1; index >= 0; index -= 1) {
+    const candidate = results[index];
+    if (candidate === undefined) {
+      continue;
+    }
+    const nextCumulativeLength = cumulativeLength + candidate.snippet.length;
+    if (nextCumulativeLength > TOTAL_RESPONSE_MAX_CHARS) {
+      break;
+    }
+    cumulativeLength = nextCumulativeLength;
+    kept.unshift(candidate);
+  }
+
+  return { results: kept, truncated: true };
+}
+
+function formatTruncationWarning(keptCount: number, totalCount: number): string {
+  const omittedCount = totalCount - keptCount;
+  return `Response truncated to stay within the total size limit; oldest wave content dropped. ${omittedCount} of ${totalCount} results omitted.`;
+}
+
 export function formatQueryContextResponse(
   repoName: string,
   featureId: string,
@@ -150,8 +184,15 @@ export function formatQueryContextResponse(
     return formatNoNwaveStructure(repoName, configuredPath);
   }
 
-  const { results, toctouWarnings } = buildQueryContextResults(classified, fileContents);
-  const warnings = [...classified.warnings, ...toctouWarnings];
+  const { results: builtResults, toctouWarnings } = buildQueryContextResults(
+    classified,
+    fileContents,
+  );
+  const { results, truncated } = capResultsToTotalBudget(builtResults);
+  const truncationWarnings = truncated
+    ? [formatTruncationWarning(results.length, builtResults.length)]
+    : [];
+  const warnings = [...classified.warnings, ...toctouWarnings, ...truncationWarnings];
 
   return {
     repoName,
