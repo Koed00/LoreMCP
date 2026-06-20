@@ -304,7 +304,7 @@ export function formatConcernNotFound(
   return {
     error: "CONCERN_NOT_FOUND",
     concern,
-    message: `No nWave artifacts mentioning "${concern}" were found across the searched repos.`,
+    message: `No nWave artifacts mentioning "${concern}" were found across the searched repos. Try list_concerns() to browse available topics.`,
     searchedRepos,
     ...(skipWarnings.length > 0 ? { warnings: skipWarnings } : {}),
     retrievedAt: "live (no cache)",

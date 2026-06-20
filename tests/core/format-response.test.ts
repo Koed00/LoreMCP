@@ -372,8 +372,13 @@ describe("formatConcernNotFound", () => {
   it("includes the literal explanatory message text, not an empty string", () => {
     const result = formatConcernNotFound("auth", ["repo-a"], []);
     expect(result.message).toBe(
-      'No nWave artifacts mentioning "auth" were found across the searched repos.',
+      'No nWave artifacts mentioning "auth" were found across the searched repos. Try list_concerns() to browse available topics.',
     );
+  });
+
+  it("nudges the agent toward list_concerns as the next step", () => {
+    const result = formatConcernNotFound("auth", ["repo-a"], []);
+    expect(result.message).toContain("list_concerns");
   });
 
   it("omits the warnings field entirely when skipWarnings is empty", () => {
