@@ -60,8 +60,11 @@ function buildTreeSnapshot(reader: DocTreeReader, entry: RepoEntry): TreeSnapsho
   };
 }
 
+const DELIVER_PHASE_NAME = "deliver";
+const EXECUTION_LOG_FILENAME = "execution-log.json";
+
 /** Enumerates docs/feature/{featureId}/{phase}/ -> { featureId: [phases] }. */
-function discoverFeatures(
+export function discoverFeatures(
   reader: DocTreeReader,
   docPath: string,
 ): Record<string, string[]> {
@@ -73,17 +76,50 @@ function discoverFeatures(
     const featureDirAbsolute = path.join(featureRootAbsolute, featureId);
     const phases = reader
       .listDir(featureDirAbsolute)
-      .filter((entryName) =>
-        reader.pathExists(
-          path.join(featureDirAbsolute, entryName, "wave-decisions.md"),
-        ),
-      );
+      .filter((entryName) => isDetectedPhase(reader, featureDirAbsolute, entryName));
     if (phases.length > 0) {
       features[featureId] = phases;
     }
   }
 
   return features;
+}
+
+/** Decides whether `entryName` (a phase directory) counts as a detected phase. */
+function isDetectedPhase(
+  reader: DocTreeReader,
+  featureDirAbsolute: string,
+  entryName: string,
+): boolean {
+  if (entryName === DELIVER_PHASE_NAME) {
+    return hasCommittedDeliverPhase(reader, path.join(featureDirAbsolute, entryName));
+  }
+  return reader.pathExists(path.join(featureDirAbsolute, entryName, "wave-decisions.md"));
+}
+
+/**
+ * Checks `deliverDirAbsolute/execution-log.json` for at least one event with
+ * `p === "COMMIT"`. Missing file or malformed/unparseable JSON is treated as
+ * "deliver phase not detected" (fail-closed).
+ */
+function hasCommittedDeliverPhase(reader: DocTreeReader, deliverDirAbsolute: string): boolean {
+  const executionLogAbsolute = path.join(deliverDirAbsolute, EXECUTION_LOG_FILENAME);
+  const outcome = reader.readFile(executionLogAbsolute);
+  if (!outcome.ok) {
+    return false;
+  }
+
+  try {
+    const parsed = JSON.parse(outcome.content) as { events?: unknown };
+    if (!Array.isArray(parsed.events)) {
+      return false;
+    }
+    return parsed.events.some(
+      (event) => typeof event === "object" && event !== null && (event as { p?: unknown }).p === "COMMIT",
+    );
+  } catch {
+    return false;
+  }
 }
 
 /** Enumerates docs/product/architecture/*.md -> repo-root-relative paths, sorted. */

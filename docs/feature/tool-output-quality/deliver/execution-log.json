@@ -1,0 +1,195 @@
+{
+  "schema_version": "3.0",
+  "feature_id": "tool-output-quality",
+  "events": [
+    {
+      "sid": "01-01",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-20T16:29:18Z"
+    },
+    {
+      "sid": "01-01",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-20T16:29:18Z"
+    },
+    {
+      "sid": "01-01",
+      "p": "RED_UNIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-20T16:29:54Z"
+    },
+    {
+      "sid": "01-01",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-20T16:52:32Z"
+    },
+    {
+      "sid": "01-01",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-20T16:52:32Z"
+    },
+    {
+      "sid": "01-01",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-20T18:12:08Z"
+    },
+    {
+      "sid": "01-01",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-20T18:12:08Z"
+    },
+    {
+      "sid": "01-01",
+      "p": "RED_UNIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-20T18:12:08Z"
+    },
+    {
+      "sid": "01-01",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS: per-file cap (8000) + total cap (60000, feature-priority over repo-wide content) layered. Root cause (zero per-file cap, oldest-first ignoring feature-vs-repo-wide priority) found via live dogfood against this repo's own ab-mcp feature -- see distill/upstream-issues.md",
+      "t": "2026-06-20T18:12:08Z"
+    },
+    {
+      "sid": "01-01",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-20T18:12:29Z"
+    },
+    {
+      "sid": "01-02",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-20T18:13:50Z"
+    },
+    {
+      "sid": "01-02",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-20T18:13:50Z"
+    },
+    {
+      "sid": "01-02",
+      "p": "RED_UNIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-20T18:14:18Z"
+    },
+    {
+      "sid": "01-02",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-20T18:15:25Z"
+    },
+    {
+      "sid": "01-02",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-20T18:15:35Z"
+    },
+    {
+      "sid": "01-03",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-20T18:29:15Z"
+    },
+    {
+      "sid": "01-03",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-20T18:29:15Z"
+    },
+    {
+      "sid": "01-03",
+      "p": "RED_UNIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-20T18:29:15Z"
+    },
+    {
+      "sid": "01-03",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-20T18:29:15Z"
+    },
+    {
+      "sid": "01-03",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-20T18:29:37Z"
+    },
+    {
+      "sid": "01-04",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-20T18:40:42Z"
+    },
+    {
+      "sid": "01-04",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-20T18:40:42Z"
+    },
+    {
+      "sid": "01-04",
+      "p": "RED_UNIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-20T18:40:42Z"
+    },
+    {
+      "sid": "01-04",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-20T18:40:42Z"
+    },
+    {
+      "sid": "01-04",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-20T18:40:53Z"
+    },
+    {
+      "sid": "post-merge-integration",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS: 505/505 tests, build clean. KPI-TOQ-1 confirmed: list-concerns query_context 97705->55708 chars. KPI-TOQ-2 confirmed: list_concerns 96->78 candidates, generic headers gone. KPI-TOQ-3 confirmed: deliver phase correctly shown for all 4 features with committed DELIVER waves. KPI-TOQ-4 confirmed: resolve_concern nudge present. Found and fixed an additional spurious warning (deliver/wave-decisions.md TOCTOU false-positive) during dogfooding.",
+      "t": "2026-06-20T18:53:41Z"
+    },
+    {
+      "sid": "mutation-testing",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS: concern-matcher.ts 86.04% (was 75.21%, below 80% gate after this round's new GENERIC_HEADING_STOPLIST/isGenericHeading + exported capSnippetAtHeadingBoundary), format-response.ts 87.65% (was 83.95%), project-wide 87.92% (threshold 80%). 17 tests added, no production code changed.",
+      "t": "2026-06-20T20:28:37Z"
+    }
+  ]
+}

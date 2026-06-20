@@ -1,0 +1,49 @@
+schema_version: 1
+journey_id: tool-output-quality
+maps_to_jobs:
+  - cross-repo-context-grounding
+steps:
+  - step: 1
+    actor: "AI coding agent"
+    action: "Calls query_context(repo_name, feature_id) on a feature with deep wave history"
+    tool_behavior: "Applies a TOTAL-response size cap across aggregated files, truncating lowest-priority results first"
+    output: "Response stays within a usable token budget, truncation warning if capped"
+  - step: 2
+    actor: "AI coding agent"
+    action: "Calls list_concerns()"
+    tool_behavior: "Filters out a stoplist of generic nWave section headers (heading-text candidates only) before returning"
+    output: "Response is dense with genuine topic signal"
+  - step: 3
+    actor: "AI coding agent"
+    action: "Calls list_features(repo_name) on a feature with a completed DELIVER wave"
+    tool_behavior: "Detects deliver phase via execution-log.json containing >=1 COMMIT-phase entry, not just wave-decisions.md presence"
+    output: "phases array correctly includes deliver"
+  - step: 4
+    actor: "AI coding agent"
+    action: "Calls resolve_concern(concern) for a topic that doesn't exist"
+    tool_behavior: "CONCERN_NOT_FOUND message suggests calling list_concerns() next"
+    output: "Agent nudged toward correct next tool"
+error_paths:
+  - condition: "query_context response naturally under the cap"
+    behavior: "no truncation, no warning -- identical to today"
+  - condition: "query_context response exceeds the total cap"
+    behavior: "truncate lowest-priority results first, add truncation warning"
+  - condition: "list_concerns stoplist matches a heading-text candidate"
+    behavior: "filtered out -- never applies to directory names or ADR titles"
+  - condition: "deliver/ directory exists but execution-log.json has zero COMMIT entries"
+    behavior: "deliver phase NOT included in phases array"
+  - condition: "resolve_concern's nudge text when list_concerns would also return empty"
+    behavior: "unconditional nudge text is acceptable -- costs nothing, agent learns on next call"
+shared_artifacts:
+  - name: query_context total-response cap
+    type: number (chars) + truncation-priority rule
+    source: "new logic in src/core/format-response.ts or classify-structure.ts -- DESIGN to decide exact placement"
+  - name: list_concerns stoplist
+    type: string[]
+    source: "new constant in src/core/concern-matcher.ts, applied only to collectFeatureFileHeadingCandidates"
+  - name: deliver phase detection rule
+    type: boolean predicate
+    source: "extends discoverFeatures in src/shell/server.ts, reads execution-log.json"
+  - name: CONCERN_NOT_FOUND message text
+    type: string
+    source: "formatConcernNotFound in src/core/format-response.ts"

@@ -10,8 +10,13 @@ import {
   formatConcernNotFound,
   formatResolveConcernResponse,
   formatListConcernsResponse,
+  capResultsToTotalBudget,
 } from "../../src/core/format-response.js";
-import type { ClassifyResult, ListFeaturesResult } from "../../src/core/classify-structure.js";
+import type {
+  ClassifyResult,
+  ListFeaturesResult,
+} from "../../src/core/classify-structure.js";
+import type { QueryContextResultItem } from "../../src/core/format-response.js";
 
 describe("formatRepoNotConfigured", () => {
   it("shapes a REPO_NOT_CONFIGURED error mentioning the repo name", () => {
@@ -241,6 +246,110 @@ describe("formatQueryContextResponse", () => {
     );
     expect(response.warnings!.some((warning) => warning.includes("could not be read"))).toBe(true);
   });
+
+  it("adds a per-file-truncation warning when an individual snippet exceeds the 8000-char cap", () => {
+    // Content over 8000 chars triggers capSnippetAtHeadingBoundary's truncation
+    // path inside buildQueryContextResults, incrementing perFileTruncations.
+    // This must surface as its own warning message, distinct from the
+    // total-response-budget truncation warning (which is not triggered here
+    // since there's only one small-enough-after-cap result).
+    const longContent = "auth strategy details repeated for length. ".repeat(300);
+    expect(longContent.length).toBeGreaterThan(8000);
+
+    const classified: ClassifyResult = {
+      outcome: "FULL",
+      filesToRead: [
+        { sourceFile: "docs/feature/ab-mcp/discover/wave-decisions.md", phase: "discover" },
+      ],
+      warnings: [],
+      availableFeatures: ["ab-mcp"],
+    };
+    const fileContents = new Map<string, string>([
+      ["docs/feature/ab-mcp/discover/wave-decisions.md", longContent],
+    ]);
+
+    const result = formatQueryContextResponse(
+      "repo-a",
+      "ab-mcp",
+      "/srv/repo-a/docs",
+      classified,
+      fileContents,
+    );
+
+    const response = result as { warnings?: string[]; results: QueryContextResultItem[] };
+    expect(response.results[0]!.snippet.length).toBeLessThan(longContent.length);
+    expect(response.warnings).toBeDefined();
+    expect(
+      response.warnings!.some((warning) => warning.includes("had their individual snippet truncated to 8000 chars")),
+    ).toBe(true);
+    expect(response.warnings!.some((warning) => warning.startsWith("1 result(s)"))).toBe(true);
+  });
+});
+
+describe("capResultsToTotalBudget", () => {
+  function makeResult(phase: string, snippetLength: number): QueryContextResultItem {
+    return {
+      sourceFile: `docs/feature/example/${phase}/wave-decisions.md`,
+      phase,
+      snippet: "x".repeat(snippetLength),
+    };
+  }
+
+  it("passes through unchanged when the combined snippet length is under budget", () => {
+    const results = [makeResult("discover", 100), makeResult("design", 200)];
+
+    const outcome = capResultsToTotalBudget(results);
+
+    expect(outcome).toEqual({ results, truncated: false });
+  });
+
+  it("drops the oldest results first when the combined snippet length exceeds budget", () => {
+    const results = [
+      makeResult("discover", 50000),
+      makeResult("design", 25000),
+      makeResult("deliver", 12000),
+    ];
+
+    const outcome = capResultsToTotalBudget(results);
+
+    expect(outcome.truncated).toBe(true);
+    expect(outcome.results).toEqual([makeResult("design", 25000), makeResult("deliver", 12000)]);
+  });
+
+  it("keeps results exactly at the budget boundary without dropping any", () => {
+    const results = [makeResult("discover", 60000)];
+
+    const outcome = capResultsToTotalBudget(results);
+
+    expect(outcome).toEqual({ results, truncated: false });
+  });
+
+  it("never splits a single result's snippet — a kept result is whole or it is dropped", () => {
+    const results = [makeResult("discover", 75000), makeResult("design", 100)];
+
+    const outcome = capResultsToTotalBudget(results);
+
+    expect(outcome.truncated).toBe(true);
+    expect(outcome.results).toHaveLength(1);
+    expect(outcome.results[0]).toEqual(makeResult("design", 100));
+    expect(outcome.results[0]?.snippet.length).toBe(100);
+  });
+
+  it("prioritizes feature-specific results over repo-wide ADR/CLAUDE.md content when truncating", () => {
+    const results = [
+      makeResult("discover", 45000),
+      makeResult("design", 15000),
+      { ...makeResult("architecture", 20000), sourceFile: "docs/product/architecture/adr-001.md" },
+      { ...makeResult("claude-md", 5000), sourceFile: "CLAUDE.md" },
+    ];
+
+    const outcome = capResultsToTotalBudget(results);
+
+    expect(outcome.truncated).toBe(true);
+    // Feature-specific content (discover, design) exactly fills the budget;
+    // repo-wide content (architecture, claude-md) is dropped entirely.
+    expect(outcome.results.map((r) => r.phase)).toEqual(["discover", "design"]);
+  });
 });
 
 describe("formatListFeaturesResponse", () => {
@@ -301,8 +410,13 @@ describe("formatConcernNotFound", () => {
   it("includes the literal explanatory message text, not an empty string", () => {
     const result = formatConcernNotFound("auth", ["repo-a"], []);
     expect(result.message).toBe(
-      'No nWave artifacts mentioning "auth" were found across the searched repos.',
+      'No nWave artifacts mentioning "auth" were found across the searched repos. Try list_concerns() to browse available topics.',
     );
+  });
+
+  it("nudges the agent toward list_concerns as the next step", () => {
+    const result = formatConcernNotFound("auth", ["repo-a"], []);
+    expect(result.message).toContain("list_concerns");
   });
 
   it("omits the warnings field entirely when skipWarnings is empty", () => {

@@ -761,6 +761,35 @@ describe("splitIntoParagraphs filtering precision (via detectRejectedPaths)", ()
     expect(result).toHaveLength(1);
     expect(result[0]!.snippet.trim()).not.toBe("");
   });
+
+  it("does not produce a RejectedPath from a whitespace-only paragraph even when it is the only one matching naively", () => {
+    // Pins the entire `.filter((p) => p.trim().length > 0)` call together: a
+    // mutant removing the filter call entirely, swapping `>` for `>=`, or
+    // checking `p.length` instead of `p.trim().length` would all let a
+    // whitespace-only "paragraph" survive and be passed to the
+    // concern/rejection-keyword checks. Constructed so the whitespace-only
+    // paragraph itself contains BOTH the concern and a rejection keyword --
+    // if it survived the filter (un-trimmed), it would directly produce a
+    // spurious RejectedPath that is NOT the genuine one we expect.
+    const whitespaceOnlyParagraphWithBothMarkers = "  \t  ";
+    const content = `${whitespaceOnlyParagraphWithBothMarkers}\n\nauth rejected: deferred for now.`;
+    const result = detectRejectedPaths("docs/ADR-001.md", "my-repo", "architecture", content, "auth");
+    expect(result).toHaveLength(1);
+    expect(result[0]!.snippet).toContain("auth rejected: deferred for now.");
+  });
+
+  it("splits strictly on a single blank line (exactly two consecutive newlines), not collapsing adjacent paragraphs into one", () => {
+    // Pins the `\n\n+` regex against a `\n\n` literal mutant: with only the
+    // literal two-newline split (no `+` for one-or-more), behavior on a
+    // single blank line is identical, so this test instead pins the
+    // opposite edge -- THREE blank lines in a row must still be treated as
+    // ONE paragraph boundary (not split into an extra empty paragraph that
+    // could shift indices), keeping exactly one rejected paragraph detected.
+    const content = "Session-based auth was considered.\n\n\n\nJWT auth approach rejected: too complex.";
+    const result = detectRejectedPaths("docs/ADR-001.md", "my-repo", "architecture", content, "auth");
+    expect(result).toHaveLength(1);
+    expect(result[0]!.snippet).toContain("rejected");
+  });
 });
 
 describe("findSectionEnd / partitionIntoSections boundary precision", () => {
@@ -894,6 +923,193 @@ describe("extractHeadingAnchoredSnippet candidate-count branch precision", () =>
     expect(result).not.toBeNull();
     expect(result).toContain("## D-1: alpha");
     expect(result).not.toContain("## D-2: beta");
+  });
+});
+
+describe("isStructuralAncestor boundary precision (via extractHeadingAnchoredSnippet)", () => {
+  it("does not treat a section as an ancestor when it starts strictly after the other section", () => {
+    // Pins `candidate.startLineIndex <= other.startLineIndex`: two disjoint
+    // sibling sections, where the supposed "candidate" starts later, must not
+    // be excluded as a structural ancestor.
+    const content = [
+      "## D-1: alpha topic",
+      "",
+      "alpha mentioned once.",
+      "",
+      "## D-2: alpha followup",
+      "",
+      "alpha mentioned once here too.",
+    ].join("\n");
+    const result = extractHeadingAnchoredSnippet(content, "alpha");
+    expect(result).not.toBeNull();
+    // Both sections tie at 1 occurrence each and neither is an ancestor of the
+    // other (disjoint siblings) -- the reduce must pick the first candidate
+    // deterministically, proving neither was wrongly excluded as an ancestor.
+    expect(result).toContain("## D-1: alpha topic");
+  });
+
+  it("does not treat a section as an ancestor when it ends strictly before the other section", () => {
+    // Pins `candidate.endLineIndex >= other.endLineIndex`: a section ending
+    // earlier than another cannot be that other section's structural ancestor.
+    const content = [
+      "## D-1: beta topic",
+      "",
+      "beta mentioned once.",
+      "",
+      "## D-2: beta followup",
+      "",
+      "beta mentioned once here too.",
+    ].join("\n");
+    const result = extractHeadingAnchoredSnippet(content, "beta");
+    expect(result).not.toBeNull();
+    expect(result).toContain("## D-1: beta topic");
+  });
+
+  it("excludes a genuine ancestor section whose own text has zero matches in favor of its sole matching descendant", () => {
+    // Pins the full conjunction of isStructuralAncestor: the H1 strictly
+    // contains the H2 (start <=, end >=, not identical span) and the H1's
+    // own text (before the H2 starts) has NO occurrence of the concern, so
+    // excludeStructuralAncestors must drop the H1 entirely, leaving the H2 as
+    // the only (and thus auto-selected) candidate.
+    const content = [
+      "# Top Level Title With No Match In Its Own Text",
+      "",
+      "## Gamma Section",
+      "",
+      "gamma appears here in the nested child only.",
+    ].join("\n");
+    const result = extractHeadingAnchoredSnippet(content, "gamma");
+    expect(result).not.toBeNull();
+    expect(result).toContain("## Gamma Section");
+    expect(result).not.toContain("Top Level Title");
+  });
+});
+
+describe("findSectionEnd loop boundary precision", () => {
+  it("does not let a deeper section beyond the immediate next heading wrongly end the section early", () => {
+    // Pins `i < headings.length` (the loop must scan ALL subsequent headings,
+    // not stop short) by constructing three headings where only the THIRD
+    // one is at an ending level <= current, while the second is deeper.
+    const content = [
+      "## D-1: delta strategy",
+      "",
+      "delta detail at top level.",
+      "",
+      "### D-1a: delta nested child",
+      "",
+      "delta nested detail.",
+      "",
+      "## D-2: epsilon unrelated",
+      "",
+      "Not about delta at all.",
+    ].join("\n");
+    const result = extractHeadingAnchoredSnippet(content, "delta");
+    expect(result).not.toBeNull();
+    expect(result).toContain("delta nested detail.");
+    expect(result).not.toContain("epsilon");
+  });
+});
+
+describe("findFirstChildHeadingLineIndex missing-neighbor precision", () => {
+  it("returns the full section text equal to ownText for the very last heading (no next heading at all)", () => {
+    // Pins `!currentHeading || !nextHeading` for the case where nextHeading
+    // is undefined (last heading in the document) -- ownTextEndLineIndex
+    // must fall back to endLineIndex (totalLines), not crash or truncate.
+    const content = [
+      "## D-1: zeta strategy",
+      "",
+      "## D-2: zeta final section",
+      "",
+      "zeta detail line one.",
+      "zeta detail line two.",
+    ].join("\n");
+    const result = extractHeadingAnchoredSnippet(content, "zeta detail line two");
+    expect(result).not.toBeNull();
+    expect(result).toContain("## D-2: zeta final section");
+    expect(result).toContain("zeta detail line two.");
+  });
+});
+
+describe("excludeStructuralAncestors own-text density precision", () => {
+  it("excludes an ancestor with zero own-text matches even when multiple unrelated descendants exist", () => {
+    // Pins the `countOccurrences(candidateSection.ownText, concern) > 0`
+    // boolean-literal/comparison mutants together: an ancestor with NO
+    // own-text match, with one matching descendant and one non-matching
+    // sibling, must still be excluded.
+    const content = [
+      "# Top Level Title With No Own-Text Match At All",
+      "",
+      "## Eta Child One",
+      "",
+      "eta mentioned here in the only matching child.",
+      "",
+      "## Eta Child Two",
+      "",
+      "Nothing relevant here.",
+    ].join("\n");
+    const result = extractHeadingAnchoredSnippet(content, "eta");
+    expect(result).not.toBeNull();
+    expect(result).toContain("Eta Child One");
+    expect(result!.trim().startsWith("## Eta Child One")).toBe(true);
+  });
+});
+
+describe("extractHeadingAnchoredSnippet single/multi-candidate branch precision", () => {
+  it("returns null defensively when the lone surviving candidate's section index has no entry (guard branch)", () => {
+    // Pins the `onlyCandidate ?` truthiness guard and optional chaining in
+    // the single-candidate branch via a normal single-match case -- this is
+    // the baseline single-candidate path (already partly covered, reinforced
+    // here to ensure the guard's true branch returns real section text, not
+    // null, ruling out the `true ? ... : ...`-style ConditionalExpression
+    // mutant on the surrounding `if`).
+    const content = ["## D-1: theta strategy", "", "theta appears exactly once."].join("\n");
+    const result = extractHeadingAnchoredSnippet(content, "theta");
+    expect(result).not.toBeNull();
+    expect(result).toContain("## D-1: theta strategy");
+  });
+});
+
+describe("ADR_NUMERIC_PREFIX_PATTERN exactness precision", () => {
+  it("strips a hyphenated ADR-NNN: prefix with no separating space before the digits", () => {
+    // Pins the `[-\s]?` optional-separator group: "ADR-005:" (hyphen, no
+    // space) must still be recognized and stripped.
+    const content = "# ADR-005: Hyphen No Space Title\n\nBody.\n";
+    expect(extractFirstHeadingText(content)).toBe("Hyphen No Space Title");
+  });
+
+  it("strips trailing whitespace of any length after the colon, not just a single space", () => {
+    // Pins `:\s*` (zero-or-more, not exactly one) -- a colon followed
+    // directly by the title (zero whitespace chars) must still strip cleanly.
+    const content = "# ADR-006:NoSpaceAfterColon\n\nBody.\n";
+    expect(extractFirstHeadingText(content)).toBe("NoSpaceAfterColon");
+  });
+
+  it("requires a whitespace character (not just any non-colon character) immediately after the digits and colon", () => {
+    // Pins `\s` (whitespace class) vs `\S` (non-whitespace) in the trailing
+    // group -- a title starting immediately with whitespace must be stripped
+    // down to the non-whitespace title text with no leading space retained.
+    const content = "# ADR-007:    Multiple Spaces Title\n\nBody.\n";
+    expect(extractFirstHeadingText(content)).toBe("Multiple Spaces Title");
+  });
+});
+
+describe("ADR_FILENAME_PATTERN $ anchor precision", () => {
+  it("does not match a filename where additional characters follow the .md extension", () => {
+    // Pins the `$` end-anchor on ADR_FILENAME_PATTERN: "adr-005-title.md.bak"
+    // must NOT match the numbered-ADR capture pattern (no trailing $), so the
+    // fallback strips only a trailing .md if present -- here it isn't, so the
+    // filename passes through with no stripping at all.
+    const result = collectConcernCandidates({
+      featureDirectoryNames: [],
+      adrFiles: [
+        {
+          sourceFile: "docs/product/architecture/adr-005-title.md.bak",
+          content: "No heading here.\n",
+        },
+      ],
+      featureFiles: [],
+    });
+    expect(result).toEqual(["adr-005-title.md.bak"]);
   });
 });
 
@@ -1092,5 +1308,103 @@ describe("collectConcernCandidates", () => {
       featureFiles: [],
     });
     expect(result).toEqual(["rate-limiting", "rate-limiting"]);
+  });
+
+  it("filters out feature-file headings that exactly match a generic stoplist term, case-insensitively", () => {
+    const result = collectConcernCandidates({
+      featureDirectoryNames: [],
+      adrFiles: [],
+      featureFiles: [
+        {
+          sourceFile: "docs/feature/auth-flow/design/wave-decisions.md",
+          phase: "design",
+          content: "## Decisions\n\nBody.\n\n## summary\n\nBody.\n\n## D-auth: JWT strategy\n\nBody.\n",
+        },
+      ],
+    });
+    expect(result).toEqual(["D-auth: JWT strategy"]);
+  });
+
+  it("keeps a heading that merely contains a stoplist word as a substring of a genuine topic heading", () => {
+    const result = collectConcernCandidates({
+      featureDirectoryNames: [],
+      adrFiles: [],
+      featureFiles: [
+        {
+          sourceFile: "docs/feature/ops/design/wave-decisions.md",
+          phase: "design",
+          content: "## Mode\n\nBody.\n\n## D-mode: deployment mode selection\n\nBody.\n",
+        },
+      ],
+    });
+    expect(result).toEqual(["D-mode: deployment mode selection"]);
+  });
+
+  it("never filters ADR titles or feature directory names even when they exactly match a stoplist term", () => {
+    const result = collectConcernCandidates({
+      featureDirectoryNames: ["Decisions"],
+      adrFiles: [
+        {
+          sourceFile: "docs/product/architecture/adr-009-summary.md",
+          content: "# Summary\n\nBody.\n",
+        },
+      ],
+      featureFiles: [],
+    });
+    expect(result).toEqual(["Decisions", "Summary"]);
+  });
+
+  it("filters every remaining stoplist entry, each exercised individually so a blanked entry would be detectable", () => {
+    // Pins each GENERIC_HEADING_STOPLIST literal (lines 78-107) individually --
+    // a mutant that blanks any single entry to "" would let that one heading
+    // leak through unfiltered while everything else stays filtered.
+    const stoplistHeadings = [
+      "Key Decisions",
+      "Constraints Established",
+      "Upstream Changes",
+      "Requirements Summary",
+      "Domain Examples",
+      "Acceptance Criteria",
+      "ADR Index Update",
+      "Architecture Summary",
+      "C4 Diagrams",
+      "Coherence Validation",
+      "Configuration Decisions (carried from orchestrator)",
+      "Greenfield Confirmation",
+      "Handoff Readiness",
+      "Key Design Decisions",
+      "Key DISCUSS-Wave Decisions",
+      "Key Decisions (confirmed by stakeholder)",
+      "Multi-Architect Context",
+      "Peer Review",
+      "Relationship to AB-MCP Wave Artifacts",
+      "Reuse Analysis",
+      "Scope Assessment (Elephant Carpaccio Gate)",
+      "Scope Decisions (Fixed — Do Not Reopen)",
+      "Scope Decisions Honored (No Relitigation)",
+      "Technology Stack",
+      "Upstream Changes (corrections/clarifications to discover artifacts)",
+      "Upstream Changes / Notes to DESIGN Wave",
+      "Upstream Changes to DISCUSS Artifacts",
+      "Brief.md Updates",
+      "Constraints Established (carried to DISTILL / DELIVER)",
+    ];
+
+    for (const heading of stoplistHeadings) {
+      const result = collectConcernCandidates({
+        featureDirectoryNames: [],
+        adrFiles: [],
+        featureFiles: [
+          {
+            sourceFile: "docs/feature/example/design/wave-decisions.md",
+            phase: "design",
+            content: `## ${heading}\n\nBody.\n\n## D-real: a genuine topic heading\n\nBody.\n`,
+          },
+        ],
+      });
+      expect(result, `expected "${heading}" to be filtered as a generic heading`).toEqual([
+        "D-real: a genuine topic heading",
+      ]);
+    }
   });
 });
