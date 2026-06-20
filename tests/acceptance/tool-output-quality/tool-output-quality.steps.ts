@@ -73,7 +73,16 @@ describeFeature(
         Given(
           "the fixture repo has a feature with 5 phases of wave-decisions content whose combined length exceeds the total response cap",
           () => {
-            const phases = ["discover", "discuss", "design", "devops", "distill"];
+            // 9 phases x >8000 chars each (each individually capped to 8000 by
+            // the per-file cap) comfortably exceeds the 60000-char total budget.
+            // Named phase-01..phase-09 (not real phase names like "discover")
+            // so alphabetical listDir order matches intended chronological
+            // order exactly -- avoids ambiguity between alphabetical and
+            // canonical-wave-name ordering.
+            const phases = [
+              "phase-01", "phase-02", "phase-03", "phase-04", "phase-05",
+              "phase-06", "phase-07", "phase-08", "phase-09",
+            ];
             phases.forEach((phase, index) => {
               const longBody = `phase ${phase} decision content. `.repeat(400);
               writeFile(
@@ -97,7 +106,7 @@ describeFeature(
             (sum: number, r: any) => sum + (r.snippet?.length ?? 0),
             0,
           );
-          expect(totalLength).toBeLessThanOrEqual(24000);
+          expect(totalLength).toBeLessThanOrEqual(60000);
         });
 
         And("the response includes a truncation warning", () => {
@@ -106,17 +115,17 @@ describeFeature(
         });
 
         And("the most recent phase's content is present in the response", () => {
-          const hasDistill = (lastResponse.results ?? []).some((r: any) =>
-            r.source_file?.includes("distill"),
+          const hasNewest = (lastResponse.results ?? []).some((r: any) =>
+            r.source_file?.includes("phase-09"),
           );
-          expect(hasDistill).toBe(true);
+          expect(hasNewest).toBe(true);
         });
 
         And("the oldest phase's content is absent from the response", () => {
-          const hasDiscover = (lastResponse.results ?? []).some((r: any) =>
-            r.source_file?.includes("discover"),
+          const hasOldest = (lastResponse.results ?? []).some((r: any) =>
+            r.source_file?.includes("phase-01"),
           );
-          expect(hasDiscover).toBe(false);
+          expect(hasOldest).toBe(false);
         });
       },
     );

@@ -3,6 +3,9 @@ import type {
   ListFeaturesResult,
 } from "./classify-structure.js";
 import type { ConcernMatch, RejectedPath } from "./concern-matcher.js";
+import { capSnippetAtHeadingBoundary } from "./concern-matcher.js";
+
+const SNIPPET_MAX_CHARS = 8000;
 
 export type QueryContextResultItem = {
   sourceFile: string;
@@ -117,34 +120,49 @@ export function formatNoNwaveStructure(
 function buildQueryContextResults(
   classified: ClassifyResult,
   fileContents: Map<string, string>,
-): { results: QueryContextResultItem[]; toctouWarnings: string[] } {
+): { results: QueryContextResultItem[]; toctouWarnings: string[]; perFileTruncations: number } {
   const results: QueryContextResultItem[] = [];
   const toctouWarnings: string[] = [];
+  let perFileTruncations = 0;
 
   for (const file of classified.filesToRead) {
-    const snippet = fileContents.get(file.sourceFile);
-    if (snippet === undefined) {
+    const content = fileContents.get(file.sourceFile);
+    if (content === undefined) {
       toctouWarnings.push(
         `${file.sourceFile} could not be read (file may have been removed)`,
       );
       continue;
     }
+    const { snippet, truncated } = capSnippetAtHeadingBoundary(content, SNIPPET_MAX_CHARS);
+    if (truncated) {
+      perFileTruncations += 1;
+    }
     results.push({ sourceFile: file.sourceFile, phase: file.phase, snippet });
   }
 
-  return { results, toctouWarnings };
+  return { results, toctouWarnings, perFileTruncations };
 }
 
-const TOTAL_RESPONSE_MAX_CHARS = 24000;
+// 60000, not 24000 (3x SNIPPET_MAX_CHARS) -- the smaller value crushed this
+// project's own deep-history ab-mcp feature from 15 results down to 1,
+// dropping foundational decisions entirely. 60000 comfortably preserves
+// ab-mcp's full 43,697-char history while still meaningfully bounding the
+// original 97,705-char pathological case that motivated this cap.
+const TOTAL_RESPONSE_MAX_CHARS = 60000;
 
-export function capResultsToTotalBudget(
+// Repo-wide content (ADRs, CLAUDE.md) is not specific to the queried feature --
+// when budget-constrained, it is dropped before any of the feature's OWN
+// wave-decisions, regardless of age. Within each group, oldest is dropped first.
+const REPO_WIDE_PHASES = new Set(["architecture", "claude-md"]);
+
+function isRepoWide(result: QueryContextResultItem): boolean {
+  return REPO_WIDE_PHASES.has(result.phase);
+}
+
+function keepNewestWithinBudget(
   results: QueryContextResultItem[],
-): { results: QueryContextResultItem[]; truncated: boolean } {
-  const totalLength = results.reduce((sum, result) => sum + result.snippet.length, 0);
-  if (totalLength <= TOTAL_RESPONSE_MAX_CHARS) {
-    return { results, truncated: false };
-  }
-
+  remainingBudget: number,
+): { kept: QueryContextResultItem[]; cumulativeLength: number } {
   const kept: QueryContextResultItem[] = [];
   let cumulativeLength = 0;
 
@@ -154,13 +172,42 @@ export function capResultsToTotalBudget(
       continue;
     }
     const nextCumulativeLength = cumulativeLength + candidate.snippet.length;
-    if (nextCumulativeLength > TOTAL_RESPONSE_MAX_CHARS) {
+    if (nextCumulativeLength > remainingBudget) {
       break;
     }
     cumulativeLength = nextCumulativeLength;
     kept.unshift(candidate);
   }
 
+  return { kept, cumulativeLength };
+}
+
+export function capResultsToTotalBudget(
+  results: QueryContextResultItem[],
+): { results: QueryContextResultItem[]; truncated: boolean } {
+  const totalLength = results.reduce((sum, result) => sum + result.snippet.length, 0);
+  if (totalLength <= TOTAL_RESPONSE_MAX_CHARS) {
+    return { results, truncated: false };
+  }
+
+  const featureResults = results.filter((r) => !isRepoWide(r));
+  const repoWideResults = results.filter(isRepoWide);
+
+  const featureLength = featureResults.reduce((sum, r) => sum + r.snippet.length, 0);
+
+  if (featureLength <= TOTAL_RESPONSE_MAX_CHARS) {
+    // All feature-specific content fits -- fill remaining budget with the
+    // newest repo-wide content (ADRs/CLAUDE.md), dropping the oldest first.
+    const remainingBudget = TOTAL_RESPONSE_MAX_CHARS - featureLength;
+    const { kept: keptRepoWide } = keepNewestWithinBudget(repoWideResults, remainingBudget);
+    const keptSet = new Set(keptRepoWide);
+    const kept = results.filter((r) => !isRepoWide(r) || keptSet.has(r));
+    return { results: kept, truncated: kept.length < results.length };
+  }
+
+  // Even feature-specific content alone exceeds budget -- repo-wide content is
+  // dropped entirely, and feature-specific content drops its oldest first.
+  const { kept } = keepNewestWithinBudget(featureResults, TOTAL_RESPONSE_MAX_CHARS);
   return { results: kept, truncated: true };
 }
 
@@ -184,7 +231,7 @@ export function formatQueryContextResponse(
     return formatNoNwaveStructure(repoName, configuredPath);
   }
 
-  const { results: builtResults, toctouWarnings } = buildQueryContextResults(
+  const { results: builtResults, toctouWarnings, perFileTruncations } = buildQueryContextResults(
     classified,
     fileContents,
   );
@@ -192,7 +239,16 @@ export function formatQueryContextResponse(
   const truncationWarnings = truncated
     ? [formatTruncationWarning(results.length, builtResults.length)]
     : [];
-  const warnings = [...classified.warnings, ...toctouWarnings, ...truncationWarnings];
+  const perFileTruncationWarnings =
+    perFileTruncations > 0
+      ? [`${perFileTruncations} result(s) had their individual snippet truncated to ${SNIPPET_MAX_CHARS} chars.`]
+      : [];
+  const warnings = [
+    ...classified.warnings,
+    ...toctouWarnings,
+    ...perFileTruncationWarnings,
+    ...truncationWarnings,
+  ];
 
   return {
     repoName,

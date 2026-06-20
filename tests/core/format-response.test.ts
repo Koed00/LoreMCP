@@ -267,19 +267,19 @@ describe("capResultsToTotalBudget", () => {
 
   it("drops the oldest results first when the combined snippet length exceeds budget", () => {
     const results = [
-      makeResult("discover", 20000),
-      makeResult("design", 10000),
-      makeResult("deliver", 5000),
+      makeResult("discover", 50000),
+      makeResult("design", 25000),
+      makeResult("deliver", 12000),
     ];
 
     const outcome = capResultsToTotalBudget(results);
 
     expect(outcome.truncated).toBe(true);
-    expect(outcome.results).toEqual([makeResult("design", 10000), makeResult("deliver", 5000)]);
+    expect(outcome.results).toEqual([makeResult("design", 25000), makeResult("deliver", 12000)]);
   });
 
   it("keeps results exactly at the budget boundary without dropping any", () => {
-    const results = [makeResult("discover", 24000)];
+    const results = [makeResult("discover", 60000)];
 
     const outcome = capResultsToTotalBudget(results);
 
@@ -287,7 +287,7 @@ describe("capResultsToTotalBudget", () => {
   });
 
   it("never splits a single result's snippet — a kept result is whole or it is dropped", () => {
-    const results = [makeResult("discover", 30000), makeResult("design", 100)];
+    const results = [makeResult("discover", 75000), makeResult("design", 100)];
 
     const outcome = capResultsToTotalBudget(results);
 
@@ -295,6 +295,22 @@ describe("capResultsToTotalBudget", () => {
     expect(outcome.results).toHaveLength(1);
     expect(outcome.results[0]).toEqual(makeResult("design", 100));
     expect(outcome.results[0]?.snippet.length).toBe(100);
+  });
+
+  it("prioritizes feature-specific results over repo-wide ADR/CLAUDE.md content when truncating", () => {
+    const results = [
+      makeResult("discover", 45000),
+      makeResult("design", 15000),
+      { ...makeResult("architecture", 20000), sourceFile: "docs/product/architecture/adr-001.md" },
+      { ...makeResult("claude-md", 5000), sourceFile: "CLAUDE.md" },
+    ];
+
+    const outcome = capResultsToTotalBudget(results);
+
+    expect(outcome.truncated).toBe(true);
+    // Feature-specific content (discover, design) exactly fills the budget;
+    // repo-wide content (architecture, claude-md) is dropped entirely.
+    expect(outcome.results.map((r) => r.phase)).toEqual(["discover", "design"]);
   });
 });
 

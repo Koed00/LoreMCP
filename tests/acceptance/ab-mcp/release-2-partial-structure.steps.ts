@@ -348,7 +348,21 @@ describeFeature(
         );
 
         Then("the response includes no warnings entry", () => {
-          expect(response.warnings).toBeUndefined();
+          // This asserts no structural false-positive warning (the original
+          // intent of this scenario: a fully-structured repo should not be
+          // warned about missing/partial structure). It does NOT assert zero
+          // warnings of any kind -- size-truncation warnings (added in
+          // tool-output-quality) are a legitimate, orthogonal warning category
+          // that can co-occur with a fully-structured repo as its own
+          // documentation history grows past the response size budget, which
+          // is exactly what now happens for this live self-dogfooding fixture.
+          const warnings: string[] = response.warnings ?? [];
+          const hasStructuralFalsePositive = warnings.some(
+            (w) =>
+              w.includes("no feature-level wave-decisions.md") ||
+              w.includes("falling back to only CLAUDE.md-level context"),
+          );
+          expect(hasStructuralFalsePositive).toBe(false);
         });
       },
     );

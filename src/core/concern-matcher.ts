@@ -85,7 +85,7 @@ function containsRejectionKeyword(paragraph: string): boolean {
   return REJECTION_KEYWORDS.some((keyword) => lower.includes(keyword));
 }
 
-function capSnippetAtHeadingBoundary(content: string, maxChars: number): { snippet: string; truncated: boolean } {
+export function capSnippetAtHeadingBoundary(content: string, maxChars: number): { snippet: string; truncated: boolean } {
   if (content.length <= maxChars) {
     return { snippet: content, truncated: false };
   }
