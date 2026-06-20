@@ -56,15 +56,22 @@ function claudeMdFileToRead(snapshot: TreeSnapshot): FileToRead[] {
     : [];
 }
 
+// "deliver" is a detected phase (per its execution-log.json having a COMMIT
+// entry, see src/shell/server.ts's discoverFeatures), but DELIVER produces an
+// execution-log.json, never a wave-decisions.md -- attempting that read would
+// always TOCTOU-fail and surface a misleading "file may have been removed"
+// warning for every feature's deliver phase, even when nothing went wrong.
 function featurePhaseFilesToRead(
   snapshot: TreeSnapshot,
   featureId: string,
 ): FileToRead[] {
   const phases = snapshot.features[featureId] ?? [];
-  return phases.map((phase) => ({
-    sourceFile: `docs/feature/${featureId}/${phase}/wave-decisions.md`,
-    phase,
-  }));
+  return phases
+    .filter((phase) => phase !== "deliver")
+    .map((phase) => ({
+      sourceFile: `docs/feature/${featureId}/${phase}/wave-decisions.md`,
+      phase,
+    }));
 }
 
 function buildPartialWarnings(snapshot: TreeSnapshot): string[] {
