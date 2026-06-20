@@ -72,6 +72,41 @@ const REJECTION_KEYWORDS = [
   "explicitly excluded",
 ];
 
+const GENERIC_HEADING_STOPLIST = [
+  "decisions",
+  "summary",
+  "key decisions",
+  "mode",
+  "constraints established",
+  "upstream changes",
+  "requirements summary",
+  "domain examples",
+  "acceptance criteria",
+  "adr index update",
+  "architecture summary",
+  "c4 diagrams",
+  "coherence validation",
+  "configuration decisions (carried from orchestrator)",
+  "greenfield confirmation",
+  "handoff readiness",
+  "key design decisions",
+  "key discuss-wave decisions",
+  "key decisions (confirmed by stakeholder)",
+  "multi-architect context",
+  "peer review",
+  "relationship to ab-mcp wave artifacts",
+  "reuse analysis",
+  "scope assessment (elephant carpaccio gate)",
+  "scope decisions (fixed — do not reopen)",
+  "scope decisions honored (no relitigation)",
+  "technology stack",
+  "upstream changes (corrections/clarifications to discover artifacts)",
+  "upstream changes / notes to design wave",
+  "upstream changes to discuss artifacts",
+  "brief.md updates",
+  "constraints established (carried to distill / deliver)",
+];
+
 // ---------------------------------------------------------------------------
 // Pure helpers
 // ---------------------------------------------------------------------------
@@ -83,6 +118,11 @@ function containsConcern(text: string, concern: string): boolean {
 function containsRejectionKeyword(paragraph: string): boolean {
   const lower = paragraph.toLowerCase();
   return REJECTION_KEYWORDS.some((keyword) => lower.includes(keyword));
+}
+
+function isGenericHeading(headingText: string): boolean {
+  const trimmedLower = headingText.trim().toLowerCase();
+  return GENERIC_HEADING_STOPLIST.includes(trimmedLower);
 }
 
 export function capSnippetAtHeadingBoundary(content: string, maxChars: number): { snippet: string; truncated: boolean } {
@@ -345,7 +385,10 @@ function collectFeatureFileHeadingCandidates(
     const headings = detectHeadingLines(lines);
     for (const heading of headings) {
       const headingLine = lines[heading.lineIndex] ?? "";
-      candidates.push(headingLine.replace(HEADING_PATTERN, "").trim());
+      const candidateText = headingLine.replace(HEADING_PATTERN, "").trim();
+      if (!isGenericHeading(candidateText)) {
+        candidates.push(candidateText);
+      }
     }
   }
   return candidates;

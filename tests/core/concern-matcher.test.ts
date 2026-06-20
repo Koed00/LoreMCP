@@ -1093,4 +1093,48 @@ describe("collectConcernCandidates", () => {
     });
     expect(result).toEqual(["rate-limiting", "rate-limiting"]);
   });
+
+  it("filters out feature-file headings that exactly match a generic stoplist term, case-insensitively", () => {
+    const result = collectConcernCandidates({
+      featureDirectoryNames: [],
+      adrFiles: [],
+      featureFiles: [
+        {
+          sourceFile: "docs/feature/auth-flow/design/wave-decisions.md",
+          phase: "design",
+          content: "## Decisions\n\nBody.\n\n## summary\n\nBody.\n\n## D-auth: JWT strategy\n\nBody.\n",
+        },
+      ],
+    });
+    expect(result).toEqual(["D-auth: JWT strategy"]);
+  });
+
+  it("keeps a heading that merely contains a stoplist word as a substring of a genuine topic heading", () => {
+    const result = collectConcernCandidates({
+      featureDirectoryNames: [],
+      adrFiles: [],
+      featureFiles: [
+        {
+          sourceFile: "docs/feature/ops/design/wave-decisions.md",
+          phase: "design",
+          content: "## Mode\n\nBody.\n\n## D-mode: deployment mode selection\n\nBody.\n",
+        },
+      ],
+    });
+    expect(result).toEqual(["D-mode: deployment mode selection"]);
+  });
+
+  it("never filters ADR titles or feature directory names even when they exactly match a stoplist term", () => {
+    const result = collectConcernCandidates({
+      featureDirectoryNames: ["Decisions"],
+      adrFiles: [
+        {
+          sourceFile: "docs/product/architecture/adr-009-summary.md",
+          content: "# Summary\n\nBody.\n",
+        },
+      ],
+      featureFiles: [],
+    });
+    expect(result).toEqual(["Decisions", "Summary"]);
+  });
 });
